@@ -208,14 +208,21 @@ input[type=color]{width:36px;height:26px;border:1px solid #d1d5db;border-radius:
     <div class="panel">
       <div class="ph" onclick="toggleP(this)"><span>도구</span><span class="arr">▾</span></div>
       <div class="pb">
-        <button class="tb-btn" id="tool-select-btn" onclick="setTool('select')" style="width:100%;justify-content:center">🖱 선택</button>
+        <button class="tb-btn" id="tool-select-btn" onclick="setTool('select')" style="width:100%;justify-content:center">🖱 선택 / 이동</button>
+        <div style="height:4px"></div>
+        <div style="font-size:10px;font-weight:600;color:#9ca3af;margin-bottom:3px">직접 그리기</div>
         <button class="tb-btn" id="tool-point-btn" onclick="setTool('point')" style="width:100%;justify-content:center">🔵 점 찍기</button>
-        <button class="tb-btn" id="tool-line-btn" onclick="setTool('line')" style="width:100%;justify-content:center">📏 선 그리기</button>
+        <button class="tb-btn" id="tool-line-btn" onclick="setTool('line')" style="width:100%;justify-content:center">📏 두 점으로 선 긋기</button>
         <button class="tb-btn" id="tool-area-btn" onclick="setTool('area')" style="width:100%;justify-content:center">🎨 면 그리기</button>
-        <div style="font-size:10px;color:#9ca3af;line-height:1.5;margin-top:2px">
+        <div style="height:4px"></div>
+        <div style="font-size:10px;font-weight:600;color:#9ca3af;margin-bottom:3px">함수로 추가</div>
+        <button class="tb-btn" id="tool-fn-btn" onclick="openFnDialog()" style="width:100%;justify-content:center;background:#eff6ff;border-color:#93c5fd;color:#1d4ed8">𝑓 함수식으로 선 추가</button>
+        <button class="tb-btn" onclick="openLineParamDialog()" style="width:100%;justify-content:center">⊞ 기울기/절편으로 추가</button>
+        <div style="font-size:10px;color:#9ca3af;line-height:1.6;margin-top:4px">
           • 점: 그래프 위 클릭<br>
-          • 선: 두 점 클릭 후 확정<br>
-          • 면: 3개+ 클릭 후 더블클릭 완료
+          • 선: 시작점 → 끝점 클릭<br>
+          • 면: 꼭짓점 클릭 → 완성 버튼<br>
+          • 함수식: y=f(x) 직접 입력
         </div>
       </div>
     </div>
@@ -452,6 +459,41 @@ loadUserPresets(); // Load on startup
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function G(){return S.graphs.find(g=>g.id===S.selectedId)}
+
+// ==================== SAFE MATH EXPRESSION PARSER ====================
+// Converts expression string into a JS function f(x) safely (no eval of arbitrary code)
+function parseFnExpr(expr){
+  try{
+    // Normalize input
+    let e=expr.trim()
+      .replace(/\s+/g,'')
+      .replace(/\^/g,'**')           // x^2 → x**2
+      .replace(/sqrt\(/g,'Math.sqrt(')
+      .replace(/cbrt\(/g,'Math.cbrt(')
+      .replace(/abs\(/g,'Math.abs(')
+      .replace(/ln\(/g,'Math.log(')
+      .replace(/log\(/g,'Math.log10(')
+      .replace(/sin\(/g,'Math.sin(')
+      .replace(/cos\(/g,'Math.cos(')
+      .replace(/exp\(/g,'Math.exp(')
+      .replace(/pi/gi,'Math.PI')
+      .replace(/e(?![x\d])/g,'Math.E') // 'e' alone → Math.E
+      .replace(/(\d)(x)/g,'$1*$2')    // 2x → 2*x
+      .replace(/(\d)\(/g,'$1*(')      // 2( → 2*(
+      // Block dangerous patterns
+      ;
+    // Security: only allow math chars + x
+    if(/[a-zA-Z]/.test(e.replace(/Math\.(sqrt|cbrt|abs|log|log10|sin|cos|exp|PI|E)\b/g,'').replace(/x/g,'')))
+      return null;
+    // eslint-disable-next-line no-new-func
+    const fn=new Function('x', `"use strict"; try{ return (${e}); } catch(e){ return NaN; }`);
+    // Quick test
+    const test=fn(1);
+    if(typeof test!=='number') return null;
+    return fn;
+  }catch(e){ return null; }
+}
+
 function GbyId(id){return S.graphs.find(g=>g.id===id)}
 
 // ==================== ZOOM ====================
@@ -673,6 +715,40 @@ function renderSVG(g,interactive){
         const mp=pts[Math.floor(pts.length*.25)];
         const pp=mp.split(',');
         s+=`<text x="${parseFloat(pp[0])+6}" y="${parseFloat(pp[1])-5}" font-size="12" font-weight="600" fill="${c}" style="pointer-events:none">${esc(l.name)}</text>`;
+      }
+    } else if(ltype==='fn'){
+      // Safe function plotter: y = a * f(x - h) + k
+      const expr=l.fnExpr||'1/x';
+      const a=parseFloat(l.fnA)||1;
+      const h=parseFloat(l.fnH)||0;
+      const k=parseFloat(l.fnK)||0;
+      const fn=parseFnExpr(expr);
+      if(fn){
+        // Plot with discontinuity detection: break polyline when jump is too large
+        let segments=[]; let cur=[];
+        const steps=300;
+        for(let i=0;i<=steps;i++){
+          const x=xMin+i*(xMax-xMin)/steps;
+          let y;
+          try{ y=a*fn(x-h)+k; } catch(e){ y=NaN; }
+          if(!isFinite(y)||y<yMin*3||y>yMax*3){
+            if(cur.length>1) segments.push(cur);
+            cur=[];
+          } else {
+            cur.push(`${svgX(x)},${svgY(Math.max(yMin,Math.min(yMax,y)))}`);
+          }
+        }
+        if(cur.length>1) segments.push(cur);
+        segments.forEach((pts,si)=>{
+          if(pts.length<2) return;
+          s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${c}" stroke-width="${sw}" ${da} style="pointer-events:none"/>`;
+          if(interactive&&si===0) s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="transparent" stroke-width="20" ${lineClick}/>`;
+        });
+        if(l.name&&segments.length>0){
+          const allPts=segments[0];
+          const mp=allPts[Math.floor(allPts.length*.6)];
+          if(mp){const pp=mp.split(',');s+=`<text x="${parseFloat(pp[0])+6}" y="${parseFloat(pp[1])-5}" font-size="12" font-weight="600" fill="${c}" style="pointer-events:none">${esc(l.name)}</text>`;}
+        }
       }
     }
     if(l.number&&ltype==='line'){
@@ -941,8 +1017,9 @@ function renderRPanel(ctx){
         <span class="rp-del" onclick="event.stopPropagation();delLine('${g.id}',${i})">✕</span>
       </div>`;
     });
-    html+=`<button class="tb-btn" style="width:100%;justify-content:center;font-size:11px" onclick="setTool('line');if(isMobile())mobileShow('canvas')">📏 선 그리기 도구로 추가</button>`;
-    html+=`<button class="tb-btn" style="width:100%;justify-content:center;font-size:11px;margin-top:3px" onclick="addLineDialog('${g.id}')">+ 파라미터로 추가...</button>`;
+    html+=`<button class="tb-btn" style="width:100%;justify-content:center;font-size:11px;background:#eff6ff;border-color:#93c5fd;color:#1d4ed8" onclick="openFnDialog()">𝑓 함수식으로 추가 (쌍곡선·루트·승수 등)</button>`;
+    html+=`<button class="tb-btn" style="width:100%;justify-content:center;font-size:11px;margin-top:3px" onclick="setTool('line');if(isMobile())mobileShow('canvas')">📏 두 점으로 직선 그리기</button>`;
+    html+=`<button class="tb-btn" style="width:100%;justify-content:center;font-size:11px;margin-top:3px" onclick="addLineDialog('${g.id}')">⊞ 기울기/절편으로 추가</button>`;
 
     // Points
     html+=`<div class="rp-section" style="margin-top:8px">점</div>`;
@@ -999,7 +1076,7 @@ function renderRPanel(ctx){
 
 // ==================== ELEMENT EDITORS ====================
 function lineEditor(gid,idx,l){
-  const typOpts=[['line','직선'],['curve','곡선'],['vert','수직선'],['horiz','수평선'],['2pt','두 점 선']]
+  const typOpts=[['line','직선'],['curve','쌍곡선형 곡선'],['fn','함수식 y=f(x)'],['vert','수직선'],['horiz','수평선'],['2pt','두 점 선']]
     .map(([v,n])=>`<option value="${v}"${l.type===v?' selected':''}>${n}</option>`).join('');
   const paramSection=
     l.type==='line'?`<div class="pf-group"><div class="pf-title">직선 파라미터</div>
@@ -1024,7 +1101,35 @@ function lineEditor(gid,idx,l){
     l.type==='vert'?`<div class="pf-group"><div class="pf-title">수직선</div>
       <label>X 위치</label><input type="number" value="${l.xv||5}" step=".5" oninput="upLine('${gid}',${idx},'xv',+this.value)"></div>`:
     l.type==='horiz'?`<div class="pf-group"><div class="pf-title">수평선</div>
-      <label>Y 위치</label><input type="number" value="${l.yv||5}" step=".5" oninput="upLine('${gid}',${idx},'yv',+this.value)"></div>`:'';
+      <label>Y 위치</label><input type="number" value="${l.yv||5}" step=".5" oninput="upLine('${gid}',${idx},'yv',+this.value)"></div>`:
+    l.type==='fn'?`<div class="pf-group">
+      <div class="pf-title">함수식 y = f(x)</div>
+      <div class="form-group">
+        <label>수식 입력</label>
+        <input type="text" value="${esc(l.fnExpr||'1/x')}" oninput="upLine('${gid}',${idx},'fnExpr',this.value)" placeholder="예: 1/x, sqrt(x), x^2, 2*x^0.5"
+          style="font-family:monospace;font-size:13px">
+        <div style="font-size:10px;color:#9ca3af;margin-top:3px">x, +, -, *, /, ^(거듭제곱), sqrt(), abs(), ln() 사용 가능</div>
+      </div>
+      <div class="form-group">
+        <label>빠른 선택</label>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${[['1/x','쌍곡선'],['sqrt(x)','루트'],['x^2','이차'],['x^0.5','루트(동일)'],
+             ['2/x','2배 쌍곡선'],['1/x^2','역제곱'],['ln(x)','로그'],['x^(1/3)','세제곱근'],
+             ['2*sqrt(x)','2√x'],['x^2/4','완만한 포물선']
+            ].map(([expr,label])=>`<button class="cbtn" style="font-size:10px;padding:3px 7px" onclick="upLine('${gid}',${idx},'fnExpr','${expr}');this.closest('.pf-group').querySelector('input').value='${expr}'">${label}<br><span style="font-family:monospace;font-size:9px;color:#9ca3af">${expr}</span></button>`).join('')}
+        </div>
+      </div>
+      <div class="row" style="gap:5px">
+        <div class="col"><label>배율 a <span style="font-size:9px;color:#9ca3af">(◆ 핸들)</span></label><input type="number" value="${l.fnA||1}" step="0.1" data-fnparam="a" oninput="upLine('${gid}',${idx},'fnA',+this.value)" title="y = a × f(x)"></div>
+        <div class="col"><label>x 이동 h <span style="font-size:9px;color:#9ca3af">(h 핸들)</span></label><input type="number" value="${l.fnH||0}" step="0.5" data-fnparam="h" oninput="upLine('${gid}',${idx},'fnH',+this.value)" title="f(x - h)"></div>
+        <div class="col"><label>y 이동 k <span style="font-size:9px;color:#9ca3af">(↕ 핸들)</span></label><input type="number" value="${l.fnK||0}" step="0.5" data-fnparam="k" oninput="upLine('${gid}',${idx},'fnK',+this.value)" title="y + k"></div>
+      </div>
+      <div style="font-size:10px;color:#9ca3af;margin-top:2px">최종 식: y = a × f(x − h) + k</div>
+      <div style="font-size:10px;color:#2563eb;margin-top:4px;line-height:1.6">
+        💡 그래프 위 핸들을 드래그해서 편집:<br>
+        &nbsp;↕ 본체 = y이동(k) &nbsp;|&nbsp; h = x이동 &nbsp;|&nbsp; a = 배율 &nbsp;|&nbsp; ◆ = 형태(a)
+      </div>
+    </div>`:'';
   return `
     <div class="pf-group">
       <div class="pf-title">기본 정보</div>
@@ -1251,10 +1356,40 @@ function onDragMove(e){
       const newSlope=Math.abs(moveX-anchorX)>0.01?(moveY-anchorY)/(moveX-anchorX):od.slope;
       l.slope=roundCoord(newSlope);
       l.int=roundCoord(anchorY-newSlope*anchorX);
+    } else if(drag.handle==='fn_k'){
+      // Body drag → move curve up/down (k = y-offset)
+      l.fnK=roundCoord((parseFloat(od.fnK)||0)+dy);
+    } else if(drag.handle==='fn_h'){
+      // Left handle → shift curve left/right (h = x-offset)
+      l.fnH=roundCoord((parseFloat(od.fnH)||0)-dx); // negative: drag right = shift curve left
+    } else if(drag.handle==='fn_a'){
+      // Right handle → scale (a = vertical stretch)
+      // Drag up = increase a, drag down = decrease a
+      const sensitivity=(g.yMax-g.yMin)*0.3;
+      const newA=(parseFloat(od.fnA)||1)-dy/sensitivity*Math.abs(parseFloat(od.fnA)||1);
+      l.fnA=roundCoord(Math.max(0.05,newA));
+    } else if(drag.handle==='fn_shape'){
+      // Shape handle → change the "main parameter" of the expression
+      // Strategy: multiply fnA by a factor based on vertical drag
+      // This intuitively changes curvature/spread
+      const sensitivity=(g.yMax-g.yMin)*0.25;
+      const factor=1-dy/sensitivity;
+      const newA=(parseFloat(od.fnA)||1)*Math.max(0.05,factor);
+      l.fnA=roundCoord(newA);
     }
   }
   refreshSVG(drag.gid);
-  // live-update coord inputs
+  // live-update fn param display
+  if(S.sel&&S.sel.idx===drag.idx&&S.sel.type==='line'){
+    const ll=g.lines[drag.idx];
+    if(ll&&ll.type==='fn'){
+      const pa=document.querySelector('#rpanel-body [data-fnparam="a"]');
+      const ph=document.querySelector('#rpanel-body [data-fnparam="h"]');
+      const pk=document.querySelector('#rpanel-body [data-fnparam="k"]');
+      if(pa) pa.value=ll.fnA; if(ph) ph.value=ll.fnH; if(pk) pk.value=ll.fnK;
+    }
+  }
+  // live-update coord inputs for points
   if(S.sel&&S.sel.idx===drag.idx&&S.sel.type==='point'){
     const p=g.points[drag.idx];
     const ix=document.querySelector('#rpanel-body [data-coord="px"]');
@@ -1365,6 +1500,60 @@ function drawSelectionHandles(g,s,svgX,svgY){
           s+=`<text x="${svgX(midX)}" y="${svgY(midY)+4}" text-anchor="middle" font-size="10" fill="${c}" style="pointer-events:none">↕</text>`;
         }
       }
+    }
+  }
+
+  if(type==='line'&&g.lines[idx]&&g.lines[idx].type==='fn'){
+    const l=g.lines[idx]; const c=l.color||'#2563eb';
+    const a=parseFloat(l.fnA)||1;
+    const h=parseFloat(l.fnH)||0;
+    const k=parseFloat(l.fnK)||0;
+    const fn=parseFnExpr(l.fnExpr||'1/x');
+    if(fn){
+      // Find 3 sample points on the curve within view for handle placement
+      const evalY=x=>{try{const y=a*fn(x-h)+k;return isFinite(y)?Math.max(g.yMin,Math.min(g.yMax,y)):null;}catch(e){return null;}};
+
+      // Body drag handle — midpoint of visible curve
+      const midX=(g.xMin+g.xMax)*0.5;
+      const midY=evalY(midX);
+      if(midY!==null){
+        s+=`<rect x="${svgX(midX)-24}" y="${svgY(midY)-10}" width="48" height="20" rx="6" fill="${c}" fill-opacity="0.12" style="cursor:move"
+          onpointerdown="if(S.tool==='select'){event.stopPropagation();startDrag(event.clientX,event.clientY,'${g.id}','line',${idx},'fn_k')}"/>`;
+        s+=`<text x="${svgX(midX)}" y="${svgY(midY)+4}" text-anchor="middle" font-size="10" fill="${c}" font-weight="500" style="pointer-events:none">↕ 이동</text>`;
+      }
+
+      // Left handle — x-shift (h parameter) — at 25% of x range
+      const lx=g.xMin+(g.xMax-g.xMin)*0.2;
+      const ly=evalY(lx);
+      if(ly!==null&&ly>g.yMin&&ly<g.yMax){
+        s+=`<circle cx="${svgX(lx)}" cy="${svgY(ly)}" r="${HIT}" fill="white" stroke="${c}" stroke-width="2" style="cursor:ew-resize"
+          onpointerdown="if(S.tool==='select'){event.stopPropagation();startDrag(event.clientX,event.clientY,'${g.id}','line',${idx},'fn_h')}"/>`;
+        s+=`<text x="${svgX(lx)}" y="${svgY(ly)+3}" text-anchor="middle" font-size="8" fill="${c}" style="pointer-events:none">h</text>`;
+      }
+
+      // Right handle — scale (a parameter) — at 75% of x range
+      const rx=g.xMin+(g.xMax-g.xMin)*0.75;
+      const ry=evalY(rx);
+      if(ry!==null&&ry>g.yMin&&ry<g.yMax){
+        s+=`<circle cx="${svgX(rx)}" cy="${svgY(ry)}" r="${HIT}" fill="white" stroke="${c}" stroke-width="2" style="cursor:ns-resize"
+          onpointerdown="if(S.tool==='select'){event.stopPropagation();startDrag(event.clientX,event.clientY,'${g.id}','line',${idx},'fn_a')}"/>`;
+        s+=`<text x="${svgX(rx)}" y="${svgY(ry)+3}" text-anchor="middle" font-size="8" fill="${c}" style="pointer-events:none">a</text>`;
+      }
+
+      // Shape handle — top area, controls main curvature parameter
+      // For hyperbola/root: adjusts the "scale" of fnExpr numerically by changing fnA
+      // Show as diamond at top-right
+      const shapex=g.xMin+(g.xMax-g.xMin)*0.35;
+      const shapey=evalY(shapex);
+      if(shapey!==null&&shapey>g.yMin+0.5&&shapey<g.yMax-0.5){
+        const sx=svgX(shapex), sy=svgY(shapey)-18;
+        s+=`<polygon points="${sx},${sy-8} ${sx+8},${sy} ${sx},${sy+8} ${sx-8},${sy}" fill="white" stroke="${c}" stroke-width="2" style="cursor:ns-resize"
+          onpointerdown="if(S.tool==='select'){event.stopPropagation();startDrag(event.clientX,event.clientY,'${g.id}','line',${idx},'fn_shape')}"/>`;
+        s+=`<text x="${sx}" y="${sy+3}" text-anchor="middle" font-size="8" fill="${c}" font-weight="600" style="pointer-events:none">◆</text>`;
+      }
+
+      // Legend showing current params
+      s+=`<text x="${drawXMin+4}" y="${drawYMax-4}" font-size="9" fill="${c}" opacity="0.8" style="pointer-events:none">a=${Math.round(a*10)/10} h=${Math.round(h*10)/10} k=${Math.round(k*10)/10}</text>`;
     }
   }
 
@@ -1650,19 +1839,168 @@ function submitMeta(gid){
   renderAll();renderRPanel(null);closeModal();
 }
 
+// Called from sidebar — checks for selected graph first
+function openFnDialog(){
+  const g=G();
+  if(!g){ alert('먼저 그래프를 선택하세요 (그래프 카드를 클릭)'); return; }
+  addFnDialog(g.id);
+}
+
+function openLineParamDialog(){
+  const g=G();
+  if(!g){ alert('먼저 그래프를 선택하세요 (그래프 카드를 클릭)'); return; }
+  addLineDialog(g.id);
+}
+
+function addFnDialog(gid){
+  openModal('함수식으로 선 추가',`
+    <div style="font-size:12px;color:#555;margin-bottom:10px">
+      <b>y = f(x)</b> 형태의 수식을 입력하면 자동으로 그래프를 그립니다.
+    </div>
+    <div class="form-group"><label>선 이름 (선택)</label>
+      <input type="text" id="fn-name" placeholder="예: TC, AC, MC"></div>
+    <div class="form-group">
+      <label>수식 입력</label>
+      <input type="text" id="fn-expr" value="1/x" placeholder="예: 1/x, sqrt(x), x^2"
+        style="font-family:monospace;font-size:14px;padding:6px 8px"
+        oninput="previewFnExpr(this.value)">
+      <div id="fn-preview-status" style="font-size:11px;margin-top:4px;color:#16a34a">✓ 유효한 수식</div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px">빠른 선택</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+        ${[
+          ['1/x',         '쌍곡선',    'xy = k'],
+          ['sqrt(x)',      '루트',      'y = √x'],
+          ['x^2',         '이차함수',  'y = x²'],
+          ['x^(1/2)',     '제곱근',    'y = x^½'],
+          ['1/x^2',       '역제곱',    'y = 1/x²'],
+          ['ln(x)',        '자연로그',  'y = ln x'],
+          ['x^(1/3)',     '세제곱근',  'y = ∛x'],
+          ['x^3',         '삼차함수',  'y = x³'],
+          ['2*sqrt(x)',   '2루트x',    'y = 2√x'],
+          ['1/(x-3)+4',  '이동 쌍곡', 'y=1/(x-3)+4'],
+          ['x^2-4*x+4',  '이차(평행이동)', 'y=(x-2)²'],
+          ['sqrt(9-x^2)','반원',      'y=√(9-x²)'],
+        ].map(([expr,name,math])=>`
+          <button class="cbtn" style="padding:5px 4px;text-align:left;line-height:1.4;height:auto"
+            onclick="document.getElementById('fn-expr').value='${expr}';previewFnExpr('${expr}')">
+            <div style="font-weight:500;font-size:11px">${name}</div>
+            <div style="font-family:monospace;font-size:9px;color:#9ca3af">${math}</div>
+          </button>`).join('')}
+      </div>
+    </div>
+    <div style="background:#f8f8f6;border-radius:8px;padding:8px 10px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:4px">변환 (선택)</div>
+      <div class="row" style="gap:6px">
+        <div class="col"><label>배율 a</label><input type="number" id="fn-a" value="1" step="0.5" title="y = a·f(x)"></div>
+        <div class="col"><label>x 이동 h</label><input type="number" id="fn-h" value="0" step="0.5" title="f(x-h)"></div>
+        <div class="col"><label>y 이동 k</label><input type="number" id="fn-k" value="0" step="0.5" title="y+k"></div>
+      </div>
+      <div style="font-size:10px;color:#9ca3af;margin-top:3px">최종: y = a · f(x − h) + k</div>
+    </div>
+    <div class="row" style="gap:8px">
+      <div class="col"><label>방정식 표시 (선택)</label>
+        <input type="text" id="fn-eq" placeholder="예: TC = √Q"></div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <label>색상</label>
+        <input type="color" id="fn-color" value="${COLORS[GbyId(gid)?.lines?.length%COLORS.length||0]}">
+      </div>
+    </div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="fn-dash"> 점선</label>`,
+    `<button class="tb-btn" onclick="closeModal()">취소</button>
+     <button class="tb-btn primary" onclick="submitFnLine('${gid}')">그래프에 추가</button>`);
+}
+
+function previewFnExpr(expr){
+  const el=document.getElementById('fn-preview-status');
+  if(!el)return;
+  if(!expr.trim()){el.style.color='#9ca3af';el.textContent='수식을 입력하세요';return;}
+  const fn=parseFnExpr(expr);
+  if(fn){
+    try{
+      const test=fn(2);
+      el.style.color='#16a34a';
+      el.textContent=`✓ 유효한 수식 — x=2일 때 y ≈ ${isFinite(test)?Math.round(test*100)/100:'±∞'}`;
+    }catch(e){el.style.color='#dc2626';el.textContent='✗ 계산 오류';}
+  }else{
+    el.style.color='#dc2626';
+    el.textContent='✗ 지원하지 않는 수식 형태입니다';
+  }
+}
+
+function submitFnLine(gid){
+  const g=GbyId(gid);if(!g)return;
+  const expr=document.getElementById('fn-expr')?.value?.trim()||'1/x';
+  const fn=parseFnExpr(expr);
+  if(!fn){alert('수식이 올바르지 않습니다.\n예: 1/x, sqrt(x), x^2, ln(x)');return;}
+  const a=parseFloat(document.getElementById('fn-a')?.value)||1;
+  const h=parseFloat(document.getElementById('fn-h')?.value)||0;
+  const k=parseFloat(document.getElementById('fn-k')?.value)||0;
+  const l={
+    name:document.getElementById('fn-name')?.value||'',
+    type:'fn',
+    fnExpr:expr, fnA:a, fnH:h, fnK:k,
+    eq:document.getElementById('fn-eq')?.value||(a!==1||h!==0||k!==0?`y=${a}·f(x${h?'−'+h:''})${k?'+'+k:''}`:`y = f(x) = ${expr}`),
+    color:document.getElementById('fn-color')?.value||COLORS[0],
+    dashed:document.getElementById('fn-dash')?.checked||false,
+    w:2
+  };
+  g.lines.push(l);
+  S.sel={gid,type:'line',idx:g.lines.length-1};
+  renderAll();renderRPanel(null);closeModal();
+}
+
 function addLineDialog(gid){
   openModal('선 추가',`
-    <div class="form-group"><label>이름</label><input type="text" id="al-n" placeholder="예: D, MC"></div>
-    <div class="form-group"><label>유형</label><select id="al-t">${[['line','직선'],['curve','곡선'],['vert','수직선'],['horiz','수평선']].map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}</select></div>
-    <div class="row" style="gap:6px"><div class="col"><label>기울기</label><input type="number" id="al-sl" value="-1" step=".1"></div><div class="col"><label>절편</label><input type="number" id="al-in" value="10" step=".5"></div></div>
-    <div class="form-group"><label>방정식</label><input type="text" id="al-eq" placeholder="예: P = -Q + 10"></div>
+    <div class="form-group"><label>이름</label><input type="text" id="al-n" placeholder="예: D, MC, TC"></div>
+    <div class="form-group"><label>유형</label><select id="al-t" onchange="document.getElementById('al-fn-area').style.display=this.value==='fn'?'block':'none';document.getElementById('al-slope-area').style.display=this.value==='line'?'flex':'none'">
+      ${[['line','직선'],['fn','함수식 y=f(x)'],['curve','쌍곡선형 곡선'],['vert','수직선'],['horiz','수평선']].map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}
+    </select></div>
+    <div id="al-slope-area" class="row" style="gap:6px">
+      <div class="col"><label>기울기</label><input type="number" id="al-sl" value="-1" step=".1"></div>
+      <div class="col"><label>절편</label><input type="number" id="al-in" value="10" step=".5"></div>
+    </div>
+    <div id="al-fn-area" style="display:none">
+      <div class="form-group">
+        <label>수식 (x에 대한 식)</label>
+        <input type="text" id="al-fn" value="1/x" placeholder="예: 1/x, sqrt(x), x^2" style="font-family:monospace">
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+        ${[['1/x','쌍곡선'],['sqrt(x)','루트'],['x^2','이차'],['x^0.5','루트'],['1/x^2','역제곱'],['ln(x)','로그'],['x^(1/3)','세제곱근'],['2*sqrt(x)','2√x']].map(([expr,label])=>
+          `<button class="cbtn" style="padding:3px 7px" onclick="document.getElementById('al-fn').value='${expr}'">${label}<br><span style="font-family:monospace;font-size:9px;color:#9ca3af">${expr}</span></button>`).join('')}
+      </div>
+      <div class="row" style="gap:6px">
+        <div class="col"><label>배율 a</label><input type="number" id="al-fa" value="1" step="0.5" title="y = a × f(x)"></div>
+        <div class="col"><label>x이동 h</label><input type="number" id="al-fh" value="0" step="0.5" title="f(x-h)"></div>
+        <div class="col"><label>y이동 k</label><input type="number" id="al-fk" value="0" step="0.5" title="y+k"></div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:6px"><label>방정식 표시</label><input type="text" id="al-eq" placeholder="예: P = -Q + 10"></div>
     <div class="row" style="gap:6px"><label>색상</label><input type="color" id="al-c" value="${COLORS[GbyId(gid)?.lines?.length%COLORS.length||0]}"></div>
     <label class="chk" style="margin-top:6px"><input type="checkbox" id="al-da"> 점선</label>`,
     `<button class="tb-btn" onclick="closeModal()">취소</button><button class="tb-btn primary" onclick="submitAddLine('${gid}')">추가</button>`);
 }
 function submitAddLine(gid){
   const g=GbyId(gid);if(!g)return;
-  const l={name:document.getElementById('al-n')?.value||'',type:document.getElementById('al-t')?.value||'line',slope:parseFloat(document.getElementById('al-sl')?.value)||0,int:parseFloat(document.getElementById('al-in')?.value)||0,eq:document.getElementById('al-eq')?.value||'',color:document.getElementById('al-c')?.value||'#2563eb',dashed:document.getElementById('al-da')?.checked||false,w:2};
+  const type=document.getElementById('al-t')?.value||'line';
+  const l={
+    name:document.getElementById('al-n')?.value||'',
+    type,
+    slope:parseFloat(document.getElementById('al-sl')?.value)||0,
+    int:parseFloat(document.getElementById('al-in')?.value)||0,
+    eq:document.getElementById('al-eq')?.value||'',
+    color:document.getElementById('al-c')?.value||'#2563eb',
+    dashed:document.getElementById('al-da')?.checked||false,
+    w:2
+  };
+  if(type==='fn'){
+    l.fnExpr=document.getElementById('al-fn')?.value||'1/x';
+    l.fnA=parseFloat(document.getElementById('al-fa')?.value)||1;
+    l.fnH=parseFloat(document.getElementById('al-fh')?.value)||0;
+    l.fnK=parseFloat(document.getElementById('al-fk')?.value)||0;
+    if(!l.eq) l.eq=`y = ${l.fnA!==1?l.fnA+'×':''}f(x${l.fnH?'-'+l.fnH:''})${l.fnK?'+'+l.fnK:''}`;
+  }
   g.lines.push(l);
   const idx=g.lines.length-1;
   renderAll();renderRPanel({type:'line',idx});closeModal();
