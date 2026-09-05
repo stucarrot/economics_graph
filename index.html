@@ -42,19 +42,26 @@ body{font-family:system-ui,sans-serif;font-size:13px;background:#f0f0ec;color:#1
 /* SVG CANVAS */
 .graph-svg-wrap{position:relative;display:block}
 .graph-svg-wrap svg{display:block}
-.eq-list{font-size:17px;color:#555;margin-top:10px;border-top:1px solid #f0f0ec;padding-top:8px;display:flex;flex-direction:column;gap:5px}
+.eq-list{font-size:calc(17px * var(--legend-scale,1));color:#555;margin-top:10px;border-top:1px solid #f0f0ec;padding-top:8px;display:flex;flex-direction:column;gap:5px}
 .eq-item{display:flex;align-items:center;gap:8px}
-.eq-dot{width:22px;height:3px;border-radius:2px;flex-shrink:0}
+.eq-dot{width:calc(22px * var(--legend-scale,1));height:3px;border-radius:2px;flex-shrink:0}
 /* Compact: 2 graphs */
 .graph-card.compact .card-title{font-size:16px;margin-bottom:3px}
 .graph-card.compact .card-desc{font-size:13px;margin-bottom:5px}
-.graph-card.compact .eq-list{font-size:13px;gap:3px;margin-top:6px;padding-top:6px}
-.graph-card.compact .eq-dot{width:16px;height:2.5px}
+.graph-card.compact .eq-list{font-size:calc(13px * var(--legend-scale,1));gap:3px;margin-top:6px;padding-top:6px}
+.graph-card.compact .eq-dot{width:calc(16px * var(--legend-scale,1));height:2.5px}
 /* Compact3: 3+ graphs */
 .graph-card.compact3 .card-title{font-size:13px;margin-bottom:2px}
 .graph-card.compact3 .card-desc{font-size:11px;margin-bottom:4px}
-.graph-card.compact3 .eq-list{font-size:11px;gap:2px;margin-top:5px;padding-top:5px}
-.graph-card.compact3 .eq-dot{width:13px;height:2px}
+.graph-card.compact3 .eq-list{font-size:calc(11px * var(--legend-scale,1));gap:2px;margin-top:5px;padding-top:5px}
+.graph-card.compact3 .eq-dot{width:calc(13px * var(--legend-scale,1));height:2px}
+/* MULTI-SELECT MODE */
+.graph-card.multi-selected{border-color:#2563eb;box-shadow:0 0 0 3px #dbeafe;border-style:dashed}
+.gc-check{position:absolute;top:7px;left:7px;width:20px;height:20px;border-radius:5px;border:2px solid #93c5fd;background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;z-index:3;cursor:pointer}
+.gc-check.checked{background:#2563eb;border-color:#2563eb}
+#multi-actions{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:none;gap:8px;align-items:center;z-index:7;background:#1a1a18;color:#fff;padding:7px 12px;border-radius:20px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+#multi-actions.open{display:flex}
+#multi-actions .tb-btn{background:#fff;padding:4px 9px}
 /* SIDEBAR */
 .panel{border-bottom:1px solid #e5e5e3}
 .ph{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;cursor:pointer;font-size:11px;font-weight:500;color:#555}
@@ -159,6 +166,8 @@ input[type=color]{width:36px;height:26px;border:1px solid #d1d5db;border-radius:
   <button class="tb-btn primary" onclick="openAddGraph()">+ 그래프 추가</button>
   <button class="tb-btn" onclick="openGridTitle()">📋 그리드 제목</button>
   <button class="tb-btn" onclick="openManagePresets()">⭐ 프리셋 관리</button>
+  <button class="tb-btn" onclick="openGridLibrary()">🗂 라이브러리</button>
+  <button class="tb-btn" id="tb-multi" onclick="toggleMultiMode()">☑ 다중선택</button>
   <div class="tb-sep"></div>
   <span class="tb-label">줌</span>
   <button class="tb-btn" onclick="zoom(-0.1)">−</button>
@@ -184,6 +193,8 @@ input[type=color]{width:36px;height:26px;border:1px solid #d1d5db;border-radius:
   <div class="tb-sep"></div>
   <button class="tb-btn primary" onclick="openAddGraph()">+ 추가</button>
   <button class="tb-btn" onclick="openGridTitle()">제목</button>
+  <button class="tb-btn" onclick="openGridLibrary()">🗂 라이브러리</button>
+  <button class="tb-btn" id="tb-multi-m" onclick="toggleMultiMode()">☑ 다중선택</button>
   <div class="tb-sep"></div>
   <button class="tb-btn" onclick="zoom(-0.1)">−</button>
   <span id="zoom-label-m" style="font-size:11px;min-width:30px;text-align:center">100%</span>
@@ -254,6 +265,7 @@ input[type=color]{width:36px;height:26px;border:1px solid #d1d5db;border-radius:
     </div>
     <div id="tool-indicator"></div>
     <div id="draw-actions" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:none;gap:6px;z-index:6;align-items:center"></div>
+    <div id="multi-actions"></div>
   </div>
 
   <!-- RIGHT PANEL -->
@@ -312,7 +324,8 @@ const S = {
   gridTitle:'', gridDesc:'',
   nextId:1, zoom:1, layout:'auto',
   tool:'select',
-  drawState: null // {type:'line'|'area', points:[{x,y}], gid}
+  drawState: null, // {type:'line'|'area', points:[{x,y}], gid}
+  multiMode:false, multiSel:new Set() // v1.3: multi-select graph cards (copy/delete in bulk)
 };
 const COLORS=['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#db2777','#b45309'];
 let PRESETS=[
@@ -377,7 +390,7 @@ function saveUserPresets(){
       presets:PRESETS.map(p=>({id:p.id,name:p.name,desc:p.desc,xl:p.xl,yl:p.yl,ct:p.ct,
         xMin:p.xMin,xMax:p.xMax,yMin:p.yMin,yMax:p.yMax,tickStep:p.tickStep,
         showGrid:p.showGrid,showTicks:p.showTicks,showOrigin:p.showOrigin,
-        canvasAuto:p.canvasAuto,canvasW:p.canvasW,canvasH:p.canvasH,
+        canvasAuto:p.canvasAuto,canvasW:p.canvasW,canvasH:p.canvasH,legendScale:p.legendScale,
         lines:p.lines,points:p.points,areas:p.areas,isUser:p.isUser})),
       deletedBuiltins
     }));
@@ -409,6 +422,7 @@ function confirmSavePreset(gid,pid){
     tickStep:g.tickStep,
     showGrid:g.showGrid,showTicks:g.showTicks,showOrigin:g.showOrigin,
     canvasAuto:g.canvasAuto,canvasW:g.canvasAuto===false?g.canvasW:undefined,canvasH:g.canvasAuto===false?g.canvasH:undefined,
+    legendScale:g.legendScale||1,
     lines:JSON.parse(JSON.stringify(g.lines||[])),
     points:JSON.parse(JSON.stringify(g.points||[])),
     areas:JSON.parse(JSON.stringify(g.areas||[])),
@@ -556,11 +570,37 @@ function getMinColWidth(){
   return Math.max(280,...S.graphs.map(g=>getCanvasDims(g).W));
 }
 
+// ==================== LABEL PLACEMENT (upper-right preference) ====================
+// v1.3: given an array of "x,y" svg-pixel point strings along a plotted line/
+// curve, pick the point that sits furthest toward the upper-right of the plot
+// (screen y grows downward, so "up" = smaller y). We score each candidate as
+// (x - y) and take the max, restricted to the middle ~84% of the array so we
+// never anchor a label right on top of an axis or the box edge.
+function pickBestLabelPoint(ptsArr){
+  if(!ptsArr||!ptsArr.length) return null;
+  const n=ptsArr.length;
+  const lo=Math.floor(n*0.08), hi=Math.min(n-1,Math.ceil(n*0.92));
+  let best=null,bestScore=-Infinity;
+  for(let i=lo;i<=hi;i++){
+    const parts=ptsArr[i].split(',');
+    const xs=parseFloat(parts[0]),ys=parseFloat(parts[1]);
+    const score=xs-ys; // larger x (right) and smaller y (up) both increase this
+    if(score>bestScore){bestScore=score;best={x:xs,y:ys};}
+  }
+  if(!best){
+    const parts=ptsArr[Math.floor(n/2)].split(',');
+    best={x:parseFloat(parts[0]),y:parseFloat(parts[1])};
+  }
+  return best;
+}
 // ==================== LABEL LAYOUT (collision avoidance) ====================
 // Used by renderSVG() to keep line/point/area name labels — and the axis
 // titles / origin "O" they're most likely to collide with — from overlapping.
 // `movable` labels get nudged (mostly vertically); `fixed` labels (axis
 // titles, origin) never move but still push movable ones out of the way.
+// v1.3: when two movable labels collide, the one already closer to the
+// upper-right (higher x-y score) is kept in place and the other is pushed
+// down, so labels settle toward the upper-right whenever there's room.
 function resolveLabelOverlaps(movable,fixed){
   const meas=l=>{
     const w=measureTextWidth(l.text,l.fontSize||12,l.fontWeight||600)+4;
@@ -585,8 +625,11 @@ function resolveLabelOverlaps(movable,fixed){
       for(let j=i+1;j<mv.length;j++){
         const a=mv[i],b=mv[j];
         if(overlaps(a,b)){
-          const need=((a.h+b.h)/2-Math.abs(a.y-b.y))/2+1;
-          if(a.y<=b.y){a.y-=need;b.y+=need;}else{a.y+=need;b.y-=need;}
+          const need=(a.h+b.h)/2-Math.abs(a.y-b.y)+2;
+          // Prefer keeping whichever label is already more upper-right (larger
+          // x0-y score) in place; push the other one down out of the way.
+          const aScore=a.x0-a.y, bScore=b.x0-b.y;
+          if(aScore>=bScore) b.y+=need; else a.y+=need;
           moved=true;
         }
       }
@@ -673,6 +716,7 @@ function createGraph(cfg){
     canvasAuto:isUser&&pre.canvasAuto===false?false:true,
     canvasW:isUser&&pre.canvasW?pre.canvasW:undefined,
     canvasH:isUser&&pre.canvasH?pre.canvasH:undefined,
+    legendScale:isUser&&pre.legendScale?pre.legendScale:1,
     lines:JSON.parse(JSON.stringify(pre.lines||[])),
     points:JSON.parse(JSON.stringify(pre.points||[])),
     areas:JSON.parse(JSON.stringify(pre.areas||[]))
@@ -830,10 +874,8 @@ function renderSVG(g,interactive){
         if(interactive) s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="transparent" stroke-width="20" ${lineClick}/>`;
       }
       if(l.name&&pts.length>0){
-        const labX=xMin+(xMax-xMin)*0.75;
-        const labY=slope*labX+int_;
-        if(labY>=yMin&&labY<=yMax) labelQueue.push({x:svgX(labX),y:svgY(labY)-7,text:l.name,color:c,anchor:'start'});
-        else if(pts.length>0){const pp=pts[Math.floor(pts.length*.7)].split(',');labelQueue.push({x:parseFloat(pp[0]),y:parseFloat(pp[1])-7,text:l.name,color:c,anchor:'start'});}
+        const bp=pickBestLabelPoint(pts);
+        if(bp) labelQueue.push({x:bp.x,y:bp.y-7,text:l.name,color:c,anchor:'start'});
       }
     } else if(ltype==='2pt'){
       const x0=parseFloat(l.x0||0),y0=parseFloat(l.y0||0),x1c=parseFloat(l.x1||10),y1c=parseFloat(l.y1||10);
@@ -849,8 +891,8 @@ function renderSVG(g,interactive){
         if(interactive) s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="transparent" stroke-width="20" ${lineClick}/>`;
       }
       if(l.name&&pts.length>0){
-        const mp=pts[Math.floor(pts.length/2)].split(',');
-        labelQueue.push({x:parseFloat(mp[0])+5,y:parseFloat(mp[1])-5,text:l.name,color:c,anchor:'start'});
+        const bp=pickBestLabelPoint(pts);
+        if(bp) labelQueue.push({x:bp.x+5,y:bp.y-5,text:l.name,color:c,anchor:'start'});
       }
     } else if(ltype==='curve'){
       let pts=[];
@@ -866,9 +908,8 @@ function renderSVG(g,interactive){
         if(interactive) s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="transparent" stroke-width="20" ${lineClick}/>`;
       }
       if(l.name&&pts.length>0){
-        const mp=pts[Math.floor(pts.length*.25)];
-        const pp=mp.split(',');
-        labelQueue.push({x:parseFloat(pp[0])+6,y:parseFloat(pp[1])-5,text:l.name,color:c,anchor:'start'});
+        const bp=pickBestLabelPoint(pts);
+        if(bp) labelQueue.push({x:bp.x+6,y:bp.y-5,text:l.name,color:c,anchor:'start'});
       }
     } else if(ltype==='fn'){
       // Safe function plotter: y = a * f(x - h) + k
@@ -899,9 +940,11 @@ function renderSVG(g,interactive){
           if(interactive&&si===0) s+=`<polyline points="${pts.join(' ')}" fill="none" stroke="transparent" stroke-width="20" ${lineClick}/>`;
         });
         if(l.name&&segments.length>0){
-          const allPts=segments[0];
-          const mp=allPts[Math.floor(allPts.length*.6)];
-          if(mp){const pp=mp.split(',');labelQueue.push({x:parseFloat(pp[0])+6,y:parseFloat(pp[1])-5,text:l.name,color:c,anchor:'start'});}
+          // Prefer the longest segment so the label sits on the most visible
+          // stretch of the curve, then pick its most upper-right point.
+          const allPts=segments.reduce((a,b)=>b.length>a.length?b:a,segments[0]);
+          const bp=pickBestLabelPoint(allPts);
+          if(bp) labelQueue.push({x:bp.x+6,y:bp.y-5,text:l.name,color:c,anchor:'start'});
         }
       }
     }
@@ -991,18 +1034,23 @@ function renderAll(){
 
   const n=S.graphs.length;
   const sizeClass=n===1?'':n===2?' compact':' compact3';
+  const mm=S.multiMode;
   grid.innerHTML=S.graphs.map(g=>{
     const sel=g.id===S.selectedId;
+    const checked=S.multiSel.has(g.id);
     const {svg}=renderSVG(g,true);
     const eqs=(g.lines||[]).filter(l=>l.eq);
     const eqHtml=eqs.length?`<div class="eq-list">${eqs.map(l=>`<div class="eq-item"><span class="eq-dot" style="background:${l.color||'#2563eb'}${l.dashed?';border-top:2px dashed'+l.color:''}"></span><span><b style="color:${l.color||'#2563eb'}">${esc(l.name||'')}</b>${l.eq?' : '+esc(l.eq):''}</span></div>`).join('')}</div>`:'';
-    return `<div class="graph-card${sel?' selected':''}${sizeClass}" onclick="selectGraph('${g.id}')">
+    const cardClick=mm?`toggleMultiSel('${g.id}')`:`selectGraph('${g.id}')`;
+    return `<div class="graph-card${sel&&!mm?' selected':''}${checked?' multi-selected':''}${sizeClass}" style="--legend-scale:${g.legendScale||1}" onclick="${cardClick}">
+      ${mm?`<div class="gc-check${checked?' checked':''}">${checked?'✓':''}</div>`:`
       <div class="card-top-btns">
         <button class="cbtn" onclick="event.stopPropagation();openEditMeta('${g.id}')">편집</button>
+        <button class="cbtn" onclick="event.stopPropagation();duplicateGraph('${g.id}')" title="복제">⧉</button>
         <button class="cbtn" onclick="event.stopPropagation();saveAsPreset('${g.id}')">★ 프리셋</button>
         <button class="cbtn" onclick="event.stopPropagation();exportSingle('${g.id}')">↓</button>
         <button class="cbtn danger" onclick="event.stopPropagation();delGraph('${g.id}')">✕</button>
-      </div>
+      </div>`}
       ${g.title?`<div class="card-title">${esc(g.title)}</div>`:''}
       ${g.desc?`<div class="card-desc">${esc(g.desc)}</div>`:''}
       <div class="graph-svg-wrap" id="wrap-${g.id}">${svg}</div>
@@ -1014,6 +1062,7 @@ function renderAll(){
   renderCoordPanel();
   updateDrawCursor();
   updateDrawActionsBar();
+  updateMultiBar();
 }
 
 // ==================== TOOL MANAGEMENT ====================
@@ -1095,10 +1144,163 @@ function selectGraph(id){
 function delGraph(id){
   S.graphs=S.graphs.filter(g=>g.id!==id);
   if(S.selectedId===id) S.selectedId=S.graphs[0]?.id||null;
+  S.multiSel.delete(id);
   S.drawState=null;
   renderAll();
   renderCoordPanel();
   renderRPanel(null);
+}
+
+// ==================== GRAPH DUPLICATE / MULTI-SELECT (v1.3) ====================
+// Deep-clones a graph with a fresh id (used by both the single "복제" button
+// and the multi-select "복사" action).
+function duplicateGraphObj(g){
+  const copy=JSON.parse(JSON.stringify(g));
+  copy.id='g'+(S.nextId++);
+  return copy;
+}
+function duplicateGraph(gid){
+  const g=GbyId(gid);if(!g)return;
+  const copy=duplicateGraphObj(g);
+  const idx=S.graphs.findIndex(x=>x.id===gid);
+  S.graphs.splice(idx+1,0,copy);
+  S.selectedId=copy.id;
+  renderAll();renderCoordPanel();renderRPanel(null);
+}
+function toggleMultiMode(){
+  S.multiMode=!S.multiMode;
+  if(!S.multiMode) S.multiSel.clear();
+  document.getElementById('tb-multi')?.classList.toggle('active',S.multiMode);
+  document.getElementById('tb-multi-m')?.classList.toggle('active',S.multiMode);
+  renderAll();
+}
+function toggleMultiSel(id){
+  if(S.multiSel.has(id)) S.multiSel.delete(id); else S.multiSel.add(id);
+  renderAll();
+}
+function clearMultiSel(){ S.multiSel.clear(); renderAll(); }
+function updateMultiBar(){
+  const bar=document.getElementById('multi-actions');
+  if(!bar)return;
+  if(!S.multiMode||!S.multiSel.size){bar.classList.remove('open');bar.innerHTML='';return;}
+  bar.classList.add('open');
+  bar.innerHTML=`<span>${S.multiSel.size}개 선택됨</span>
+    <button class="tb-btn" onclick="copySelectedGraphs()">⧉ 복사</button>
+    <button class="tb-btn" onclick="saveSelectedAsGridLibrary()">🗂 라이브러리 저장</button>
+    <button class="tb-btn danger" style="color:#dc2626" onclick="deleteSelectedGraphs()">✕ 삭제</button>
+    <button class="tb-btn" onclick="clearMultiSel()">선택 해제</button>`;
+}
+function copySelectedGraphs(){
+  if(!S.multiSel.size)return;
+  const ids=[...S.multiSel];
+  const newIds=[];
+  ids.forEach(id=>{
+    const idx=S.graphs.findIndex(x=>x.id===id);
+    if(idx<0)return;
+    const copy=duplicateGraphObj(S.graphs[idx]);
+    S.graphs.splice(idx+1,0,copy);
+    newIds.push(copy.id);
+  });
+  S.multiSel=new Set(newIds);
+  renderAll();
+}
+function deleteSelectedGraphs(){
+  if(!S.multiSel.size)return;
+  if(!confirm(`선택한 ${S.multiSel.size}개 그래프를 삭제할까요?`))return;
+  S.graphs=S.graphs.filter(g=>!S.multiSel.has(g.id));
+  if(!S.graphs.find(g=>g.id===S.selectedId)) S.selectedId=S.graphs[0]?.id||null;
+  S.multiSel.clear();
+  renderAll();renderCoordPanel();renderRPanel(null);
+}
+
+// ==================== GRID LIBRARY (v1.3) ====================
+// A "그리드" here means the whole set of graphs currently on the canvas
+// (plus grid title/desc/layout) saved as one reusable template — distinct
+// from PRESETS, which save a single graph. Persisted separately in
+// localStorage so it doesn't interfere with the existing preset system.
+let GRID_LIBRARY=[];
+function loadGridLibrary(){
+  try{
+    const saved=localStorage.getItem('econ_grid_library');
+    if(saved) GRID_LIBRARY=JSON.parse(saved)||[];
+  }catch(e){}
+}
+function saveGridLibraryStore(){
+  try{ localStorage.setItem('econ_grid_library',JSON.stringify(GRID_LIBRARY)); }catch(e){}
+}
+loadGridLibrary();
+
+function openGridLibrary(){
+  const html=`
+    <div style="font-size:12px;color:#555;margin-bottom:10px">현재 화면의 그래프 배치 전체를 하나의 그리드로 저장해두고, 나중에 다시 불러올 수 있습니다.</div>
+    <button class="tb-btn primary" style="width:100%;justify-content:center;margin-bottom:12px" onclick="saveCurrentGridToLibrary()">💾 현재 그리드 전체 저장</button>
+    <div style="display:flex;flex-direction:column;gap:6px">
+    ${GRID_LIBRARY.length?GRID_LIBRARY.map(item=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e5e3;border-radius:8px;background:#f8f8f6">
+        <div style="flex:1">
+          <div style="font-weight:500;font-size:12px">${esc(item.name)}</div>
+          <div style="font-size:10px;color:#9ca3af">그래프 ${item.graphs.length}개</div>
+        </div>
+        <button class="cbtn" onclick="loadGridLibraryItem('${item.id}')">불러오기</button>
+        <button class="cbtn" onclick="renameGridLibraryItem('${item.id}')">이름변경</button>
+        <button class="cbtn danger" onclick="deleteGridLibraryItem('${item.id}')">삭제</button>
+      </div>`).join(''):'<div style="font-size:11px;color:#9ca3af;text-align:center;padding:14px 0">저장된 그리드가 없습니다</div>'}
+    </div>`;
+  openModal('그리드 라이브러리',html,`<button class="tb-btn primary" onclick="closeModal()">닫기</button>`);
+}
+function saveCurrentGridToLibrary(){
+  if(!S.graphs.length){alert('저장할 그래프가 없습니다');return;}
+  const name=prompt('그리드 이름을 입력하세요:',S.gridTitle||'내 그리드');
+  if(!name||!name.trim())return;
+  GRID_LIBRARY.push({
+    id:'grid_'+Date.now(),
+    name:name.trim(),
+    gridTitle:S.gridTitle,gridDesc:S.gridDesc,layout:S.layout,
+    graphs:JSON.parse(JSON.stringify(S.graphs))
+  });
+  saveGridLibraryStore();
+  openGridLibrary();
+}
+function saveSelectedAsGridLibrary(){
+  if(!S.multiSel.size){alert('선택된 그래프가 없습니다');return;}
+  const name=prompt(`선택한 ${S.multiSel.size}개 그래프를 저장할 그리드 이름을 입력하세요:`,'내 그리드 세트');
+  if(!name||!name.trim())return;
+  const graphs=S.graphs.filter(g=>S.multiSel.has(g.id));
+  GRID_LIBRARY.push({id:'grid_'+Date.now(),name:name.trim(),gridTitle:'',gridDesc:'',layout:S.layout,graphs:JSON.parse(JSON.stringify(graphs))});
+  saveGridLibraryStore();
+  alert(`"${name}" 그리드로 저장됐습니다!`);
+}
+function loadGridLibraryItem(id){
+  const item=GRID_LIBRARY.find(x=>x.id===id);if(!item)return;
+  if(S.graphs.length&&!confirm('현재 그리드를 저장된 그리드로 대체할까요? (저장하지 않은 변경사항은 사라집니다)'))return;
+  // Assign fresh ids so this doesn't collide with anything already on screen / created since.
+  S.graphs=JSON.parse(JSON.stringify(item.graphs)).map(g=>{g.id='g'+(S.nextId++);return g;});
+  S.gridTitle=item.gridTitle||'';S.gridDesc=item.gridDesc||'';
+  S.layout=item.layout||'auto';
+  S.selectedId=S.graphs[0]?.id||null;
+  S.sel=null;S.multiSel.clear();S.multiMode=false;
+  document.getElementById('tb-multi')?.classList.remove('active');
+  document.getElementById('tb-multi-m')?.classList.remove('active');
+  closeModal();
+  setLayout(S.layout);
+  document.getElementById('grid-title-text').textContent=S.gridTitle;
+  document.getElementById('grid-desc-text').textContent=S.gridDesc;
+  document.getElementById('grid-title-area').style.display=(S.gridTitle||S.gridDesc)?'block':'none';
+  renderAll();renderCoordPanel();renderRPanel(null);
+}
+function renameGridLibraryItem(id){
+  const item=GRID_LIBRARY.find(x=>x.id===id);if(!item)return;
+  const name=prompt('새 이름을 입력하세요:',item.name);
+  if(!name||!name.trim())return;
+  item.name=name.trim();
+  saveGridLibraryStore();
+  openGridLibrary();
+}
+function deleteGridLibraryItem(id){
+  if(!confirm('이 그리드를 삭제할까요?'))return;
+  GRID_LIBRARY=GRID_LIBRARY.filter(x=>x.id!==id);
+  saveGridLibraryStore();
+  openGridLibrary();
 }
 
 // ==================== COORD PANEL (sidebar) ====================
@@ -1134,12 +1336,33 @@ function renderCoordPanel(){
       <div class="col"><label>X축 라벨</label><input type="text" value="${esc(g.xLabel||'Q')}" onchange="upG('${g.id}','xLabel',this.value);renderAll()"></div>
       <div class="col"><label>Y축 라벨</label><input type="text" value="${esc(g.yLabel||'P')}" onchange="upG('${g.id}','yLabel',this.value);renderAll()"></div>
     </div>
+    <div class="form-group">
+      ${legendScaleControlHtml(g)}
+    </div>
     <div style="border-top:1px solid #f0f0ec;margin-top:6px;padding-top:6px">
       ${canvasSizeControlsHtml(g)}
     </div>`;
 }
 
 function upG(id,k,v){const g=GbyId(id);if(g)g[k]=v;}
+// v1.3: shared markup for the "식 범례 크기" (equation-legend relative size)
+// slider, used in both the sidebar coord panel and the right panel.
+function legendScaleControlHtml(g){
+  return `<label class="legend-scale-label">식 범례 크기 (${Math.round((g.legendScale||1)*100)}%)</label>
+    <input type="range" min="0.5" max="2" step="0.05" value="${g.legendScale||1}" oninput="setLegendScale('${g.id}',+this.value,this)">`;
+}
+function setLegendScale(gid,val,inputEl){
+  const g=GbyId(gid);if(!g)return;
+  g.legendScale=val;
+  // Update just the % label + this card's CSS var directly (cheap live-preview
+  // while dragging) instead of a full renderAll(); a full re-render would
+  // otherwise recreate the slider mid-drag and lose focus.
+  const label=inputEl?.parentElement?.querySelector('.legend-scale-label');
+  if(label) label.textContent=`식 범례 크기 (${Math.round(val*100)}%)`;
+  const idx=S.graphs.findIndex(x=>x.id===gid);
+  const cards=document.querySelectorAll('.graph-card');
+  if(cards[idx]) cards[idx].style.setProperty('--legend-scale',val);
+}
 
 // ==================== RIGHT PANEL ====================
 function renderRPanel(ctx){
@@ -1168,6 +1391,9 @@ function renderRPanel(ctx){
         <label class="chk"><input type="checkbox" ${g.showGrid!==false?'checked':''} onchange="upG('${g.id}','showGrid',this.checked);renderAll()"> 그리드 표시</label>
         <label class="chk"><input type="checkbox" ${g.showTicks!==false?'checked':''} onchange="upG('${g.id}','showTicks',this.checked);renderAll()"> 눈금 표시</label>
         <label class="chk"><input type="checkbox" ${g.showOrigin!==false?'checked':''} onchange="upG('${g.id}','showOrigin',this.checked);renderAll()"> 원점</label>
+      </div>
+      <div style="border-top:1px solid #e5e5e3;margin-top:4px;padding-top:6px">
+        ${legendScaleControlHtml(g)}
       </div>
       <div style="border-top:1px solid #e5e5e3;margin-top:4px;padding-top:6px">
         <div class="pf-title" style="margin-bottom:4px">🖼 캔버스 크기</div>
@@ -2206,8 +2432,11 @@ function openPreview(){
   const gridHtml=S.graphs.map(g=>{
     const {svg}=renderSVG(g,false); // non-interactive = no hit areas, no handles
     const eqs=(g.lines||[]).filter(l=>l.eq);
+    const ls=g.legendScale||1; // v1.3: honor per-graph equation-legend size here too
+    const eqBase=n===1?15:n===2?12:10;
+    const dotBase=n===1?18:n===2?15:12;
     const eqHtml=eqs.length
-      ?`<div style="font-size:${n===1?'15px':n===2?'12px':'10px'};color:#555;margin-top:8px;border-top:1px solid #f0f0ec;padding-top:6px;display:flex;flex-direction:column;gap:4px">${eqs.map(l=>`<div style="display:flex;align-items:center;gap:7px"><span style="width:18px;height:3px;border-radius:2px;background:${l.color||'#2563eb'};flex-shrink:0;display:inline-block"></span><span><b style="color:${l.color||'#2563eb'}">${esc(l.name||'')}</b>${l.eq?' : '+esc(l.eq):''}</span></div>`).join('')}</div>`:'';
+      ?`<div style="font-size:${(eqBase*ls).toFixed(1)}px;color:#555;margin-top:8px;border-top:1px solid #f0f0ec;padding-top:6px;display:flex;flex-direction:column;gap:4px">${eqs.map(l=>`<div style="display:flex;align-items:center;gap:7px"><span style="width:${(dotBase*ls).toFixed(1)}px;height:3px;border-radius:2px;background:${l.color||'#2563eb'};flex-shrink:0;display:inline-block"></span><span><b style="color:${l.color||'#2563eb'}">${esc(l.name||'')}</b>${l.eq?' : '+esc(l.eq):''}</span></div>`).join('')}</div>`:'';
     return `<div style="background:#fff;border-radius:10px;padding:14px">
       ${g.title?`<div style="font-size:${n===1?'24px':n===2?'16px':'13px'};font-weight:600;margin-bottom:4px">${esc(g.title)}</div>`:''}
       ${g.desc?`<div style="font-size:${n===1?'15px':n===2?'12px':'10px'};color:#9ca3af;margin-bottom:6px">${esc(g.desc)}</div>`:''}
@@ -2285,7 +2514,12 @@ function exportSingle(gid){
 function dl(canvas,name){
   const a=document.createElement('a');
   a.href=canvas.toDataURL('image/png');
-  a.download=(name||'graph').replace(/\s+/g,'-')+'.png';
+  // Graph/grid titles can contain characters that are invalid in filenames
+  // on some OSes (/ \ : * ? " < > |) — strip those before using the title
+  // (exportSingle/exportAll already pass g.title / S.gridTitle here) as the
+  // downloaded PNG's file name.
+  const safe=(name||'graph').replace(/[\\/:*?"<>|]+/g,'').trim().replace(/\s+/g,'-');
+  a.download=(safe||'graph')+'.png';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 
