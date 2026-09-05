@@ -377,6 +377,7 @@ function saveUserPresets(){
       presets:PRESETS.map(p=>({id:p.id,name:p.name,desc:p.desc,xl:p.xl,yl:p.yl,ct:p.ct,
         xMin:p.xMin,xMax:p.xMax,yMin:p.yMin,yMax:p.yMax,tickStep:p.tickStep,
         showGrid:p.showGrid,showTicks:p.showTicks,showOrigin:p.showOrigin,
+        canvasAuto:p.canvasAuto,canvasW:p.canvasW,canvasH:p.canvasH,
         lines:p.lines,points:p.points,areas:p.areas,isUser:p.isUser})),
       deletedBuiltins
     }));
@@ -407,6 +408,7 @@ function confirmSavePreset(gid,pid){
     xMin:g.xMin,xMax:g.xMax,yMin:g.yMin,yMax:g.yMax,
     tickStep:g.tickStep,
     showGrid:g.showGrid,showTicks:g.showTicks,showOrigin:g.showOrigin,
+    canvasAuto:g.canvasAuto,canvasW:g.canvasAuto===false?g.canvasW:undefined,canvasH:g.canvasAuto===false?g.canvasH:undefined,
     lines:JSON.parse(JSON.stringify(g.lines||[])),
     points:JSON.parse(JSON.stringify(g.points||[])),
     areas:JSON.parse(JSON.stringify(g.areas||[])),
@@ -496,6 +498,78 @@ function parseFnExpr(expr){
 
 function GbyId(id){return S.graphs.find(g=>g.id===id)}
 
+// ==================== CANVAS SIZE (auto-fit / manual resize) ====================
+// v1.1 — Each graph's SVG "canvas" (viewBox W/H) can either:
+//   - auto-fit (g.canvasAuto !== false, default): W grows to fit the X/Y axis
+//     label text so long labels are never clipped.
+//   - manual (g.canvasAuto === false): uses g.canvasW / g.canvasH exactly as
+//     the user set them via the size inputs in the sidebar / right panel.
+// IMPORTANT: renderSVG(), getSVGCoords(), and drawSelectionHandles() must all
+// derive W/H/pad from getCanvasDims(g) — never hardcode them again — or click
+// / drag coordinates will drift out of sync with what's drawn.
+let _measureCtx=null;
+function measureTextWidth(text,fontPx,weight){
+  if(!_measureCtx) _measureCtx=document.createElement('canvas').getContext('2d');
+  _measureCtx.font=`${weight||400} ${fontPx}px system-ui,-apple-system,sans-serif`;
+  return _measureCtx.measureText(String(text==null?'':text)).width;
+}
+function getCanvasDims(g){
+  const baseW=320,baseH=260,pad=46;
+  if(g.canvasAuto===false){
+    const W=Math.max(150,Math.round(g.canvasW)||baseW);
+    const H=Math.max(120,Math.round(g.canvasH)||baseH);
+    return {W,H,pad};
+  }
+  // Auto mode: widen the right margin to fit the X-axis label; also make sure
+  // a long Y-axis label (near-centered for 1·4/4-분면 types) has room.
+  const xLabelW=measureTextWidth(g.xLabel||'X',13,700);
+  const yLabelW=measureTextWidth(g.yLabel||'Y',13,700);
+  const rightMargin=Math.max(22,Math.ceil(xLabelW)+14);
+  let W=baseW-22+rightMargin; // only grows past baseW when the label needs more room
+  const ct=g.coordType;
+  const ax0Guess=(ct==='q1'||ct==='q1_no'||!ct)?pad:W/2;
+  const yLabelEdge=ax0Guess+4+yLabelW+8;
+  if(yLabelEdge>W) W=Math.ceil(yLabelEdge);
+  W=Math.max(baseW,Math.ceil(W));
+  const H=baseH;
+  g.canvasW=W; g.canvasH=H; // keep in sync so UI/export/presets can read the current size
+  return {W,H,pad};
+}
+function getMinColWidth(){
+  if(!S.graphs.length) return 280;
+  return Math.max(280,...S.graphs.map(g=>getCanvasDims(g).W));
+}
+function setCanvasAuto(gid,val){
+  const g=GbyId(gid);if(!g)return;
+  g.canvasAuto=val;
+  if(val){delete g.canvasW;delete g.canvasH;}
+  renderAll();renderCoordPanel();renderRPanel(null);
+}
+function setCanvasSize(gid,axis,val){
+  const g=GbyId(gid);if(!g)return;
+  g.canvasAuto=false;
+  if(axis==='W') g.canvasW=Math.max(150,Math.round(val)||320);
+  else g.canvasH=Math.max(120,Math.round(val)||260);
+  renderAll();renderCoordPanel();renderRPanel(null);
+}
+function resetCanvasSize(gid){
+  const g=GbyId(gid);if(!g)return;
+  g.canvasAuto=true;
+  delete g.canvasW;delete g.canvasH;
+  renderAll();renderCoordPanel();renderRPanel(null);
+}
+function canvasSizeControlsHtml(g){
+  const auto=g.canvasAuto!==false;
+  return `<div class="form-group" style="margin-top:2px">
+      <label class="chk"><input type="checkbox" ${auto?'checked':''} onchange="setCanvasAuto('${g.id}',this.checked)"> 캔버스 크기 자동 조정</label>
+    </div>
+    <div class="row" style="gap:5px">
+      <div class="col"><label>캔버스 너비(px)</label><input type="number" min="150" max="1200" step="10" value="${g.canvasW||320}" ${auto?'disabled':''} onchange="setCanvasSize('${g.id}','W',+this.value)"></div>
+      <div class="col"><label>캔버스 높이(px)</label><input type="number" min="120" max="1000" step="10" value="${g.canvasH||260}" ${auto?'disabled':''} onchange="setCanvasSize('${g.id}','H',+this.value)"></div>
+    </div>
+    ${!auto?`<button class="tb-btn" style="width:100%;justify-content:center;font-size:11px" onclick="resetCanvasSize('${g.id}')">↺ 자동 크기로 되돌리기</button>`:''}`;
+}
+
 // ==================== ZOOM ====================
 function zoom(d){S.zoom=Math.max(0.3,Math.min(3,S.zoom+d));applyZoom()}
 function resetZoom(){S.zoom=1;applyZoom()}
@@ -524,11 +598,14 @@ function createGraph(cfg){
   const isUser=!!pre.isUser;
   const g={
     id,
-    title:cfg.title||pre.name,
-    desc:cfg.desc||pre.desc||'',
+    // NOTE: !==undefined (not ||) so an intentionally-blank title/desc/label
+    // from the "그래프 추가" dialog is respected instead of reverting to the
+    // preset's default text (this was a bug — see HANDOFF.md).
+    title:cfg.title!==undefined?cfg.title:pre.name,
+    desc:cfg.desc!==undefined?cfg.desc:(pre.desc||''),
     coordType:cfg.ct||(isUser?pre.ct:null)||'q1',
-    xLabel:cfg.xl||pre.xl||'Q',
-    yLabel:cfg.yl||pre.yl||'P',
+    xLabel:cfg.xl!==undefined?cfg.xl:(pre.xl||'Q'),
+    yLabel:cfg.yl!==undefined?cfg.yl:(pre.yl||'P'),
     showOrigin:isUser&&pre.showOrigin!==undefined?pre.showOrigin:true,
     showGrid:isUser&&pre.showGrid!==undefined?pre.showGrid:true,
     showTicks:isUser&&pre.showTicks!==undefined?pre.showTicks:true,
@@ -537,6 +614,9 @@ function createGraph(cfg){
     yMin:isUser&&pre.yMin!==undefined?pre.yMin:0,
     yMax:isUser&&pre.yMax!==undefined?pre.yMax:10,
     tickStep:isUser&&pre.tickStep?pre.tickStep:2,
+    canvasAuto:isUser&&pre.canvasAuto===false?false:true,
+    canvasW:isUser&&pre.canvasW?pre.canvasW:undefined,
+    canvasH:isUser&&pre.canvasH?pre.canvasH:undefined,
     lines:JSON.parse(JSON.stringify(pre.lines||[])),
     points:JSON.parse(JSON.stringify(pre.points||[])),
     areas:JSON.parse(JSON.stringify(pre.areas||[]))
@@ -553,7 +633,7 @@ function createGraph(cfg){
 
 // ==================== RENDER SVG ====================
 function renderSVG(g,interactive){
-  const W=320,H=260,pad=46;
+  const {W,H,pad}=getCanvasDims(g);
   const {xMin,xMax,yMin,yMax,coordType:ct,showGrid:sg,showTicks:st,tickStep:ts}=g;
   const xRange=xMax-xMin,yRange=yMax-yMin;
   // Origin SVG position
@@ -567,9 +647,15 @@ function renderSVG(g,interactive){
   const svgX=x=>drawXMin+(x-xMin)/xRange*(drawXMax-drawXMin);
   const svgY=y=>drawYMax-(y-yMin)/yRange*(drawYMax-drawYMin);
 
-  // SVG is responsive: width="100%" with fixed viewBox aspect ratio
-  let s=`<svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block"`;
-  if(interactive) s+=` id="isvg-${g.id}" data-gid="${g.id}" onclick="svgClick(event,'${g.id}')" ondblclick="svgDblClick(event,'${g.id}')" onmousemove="svgMouseMove(event,'${g.id}')" onmouseleave="svgMouseLeave('${g.id}')" ontouchstart="svgTouchStart(event,'${g.id}')" ontouchmove="svgTouchMove(event,'${g.id}')" style="touch-action:none;display:block"`;
+  // SVG is responsive: width="100%" with an auto-fit/resizable viewBox (see getCanvasDims()).
+  // overflow:visible is intentional so a long label that still pokes past the
+  // viewBox is never hard-clipped — getCanvasDims() also grows the viewBox to
+  // fit it in the first place, this is just a safety net.
+  // (previously this tag had TWO "style" attributes when interactive; only the
+  // first is honored by the HTML parser, so touch-action:none was silently
+  // ignored — merged into one attribute below.)
+  let s=`<svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible${interactive?';touch-action:none':''}"`;
+  if(interactive) s+=` id="isvg-${g.id}" data-gid="${g.id}" onclick="svgClick(event,'${g.id}')" ondblclick="svgDblClick(event,'${g.id}')" onmousemove="svgMouseMove(event,'${g.id}')" onmouseleave="svgMouseLeave('${g.id}')" ontouchstart="svgTouchStart(event,'${g.id}')" ontouchmove="svgTouchMove(event,'${g.id}')"`;
   s+=`>`;
 
   // Grid
@@ -825,7 +911,8 @@ function renderAll(){
   document.getElementById('tb-status').textContent=S.graphs.length?`${S.graphs.length}개`:'그래프 없음';
   empty.style.display=S.graphs.length?'none':'block';
   grid.style.display=S.graphs.length?'grid':'none';
-  grid.style.gridTemplateColumns=`repeat(${getGridCols()},minmax(280px,1fr))`;
+  // getMinColWidth() also refreshes each auto-mode graph's canvasW/H (see getCanvasDims)
+  grid.style.gridTemplateColumns=`repeat(${getGridCols()},minmax(${getMinColWidth()}px,1fr))`;
 
   const n=S.graphs.length;
   const sizeClass=n===1?'':n===2?' compact':' compact3';
@@ -971,6 +1058,9 @@ function renderCoordPanel(){
     <div class="row" style="gap:5px">
       <div class="col"><label>X축 라벨</label><input type="text" value="${esc(g.xLabel||'Q')}" onchange="upG('${g.id}','xLabel',this.value);renderAll()"></div>
       <div class="col"><label>Y축 라벨</label><input type="text" value="${esc(g.yLabel||'P')}" onchange="upG('${g.id}','yLabel',this.value);renderAll()"></div>
+    </div>
+    <div style="border-top:1px solid #f0f0ec;margin-top:6px;padding-top:6px">
+      ${canvasSizeControlsHtml(g)}
     </div>`;
 }
 
@@ -1003,6 +1093,10 @@ function renderRPanel(ctx){
         <label class="chk"><input type="checkbox" ${g.showGrid!==false?'checked':''} onchange="upG('${g.id}','showGrid',this.checked);renderAll()"> 그리드 표시</label>
         <label class="chk"><input type="checkbox" ${g.showTicks!==false?'checked':''} onchange="upG('${g.id}','showTicks',this.checked);renderAll()"> 눈금 표시</label>
         <label class="chk"><input type="checkbox" ${g.showOrigin!==false?'checked':''} onchange="upG('${g.id}','showOrigin',this.checked);renderAll()"> 원점</label>
+      </div>
+      <div style="border-top:1px solid #e5e5e3;margin-top:4px;padding-top:6px">
+        <div class="pf-title" style="margin-bottom:4px">🖼 캔버스 크기</div>
+        ${canvasSizeControlsHtml(g)}
       </div>
     </div>`;
 
@@ -1437,7 +1531,7 @@ function drawSelectionHandles(g,s,svgX,svgY){
   // Never draw handles in draw modes — they'd intercept clicks needed for drawing
   if(S.tool!=='select')return s;
   const {type,idx}=S.sel;
-  const W=320,H=260,pad=46;
+  const {W,H,pad}=getCanvasDims(g);
   const {coordType:ct}=g;
   let oy; if(ct==='q14'||ct==='all') oy=H/2; else oy=H-pad+6;
   const drawXMin=pad,drawXMax=W-22,drawYMin=18,drawYMax=oy<H-10?H-pad+6:H-22;
@@ -1578,8 +1672,8 @@ function getSVGCoords(clientX,clientY,gid){
   const g=GbyId(gid);if(!g)return null;
   const svg=document.getElementById('isvg-'+gid);if(!svg)return null;
   const rect=svg.getBoundingClientRect();
-  // Must match renderSVG constants exactly
-  const W=320,H=260,pad=46;
+  // Must match renderSVG exactly — both derive from getCanvasDims(g)
+  const {W,H,pad}=getCanvasDims(g);
   const scaleX=W/rect.width, scaleY=H/rect.height;
   const px=(clientX-rect.left)*scaleX;
   const py=(clientY-rect.top)*scaleY;
@@ -1822,8 +1916,8 @@ function submitAddGraph(){
 function openEditMeta(gid){
   const g=GbyId(gid);if(!g)return;
   const body=`
-    <div class="form-group"><label>제목</label><input type="text" id="em-t" value="${esc(g.title||'')}"></div>
-    <div class="form-group"><label>설명</label><input type="text" id="em-d" value="${esc(g.desc||'')}"></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 <span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(제목 없음)"></div>
+    <div class="form-group"><label>설명</label><input type="text" id="em-d" value="${esc(g.desc||'')}" placeholder="(설명 없음)"></div>
     <div class="row" style="gap:6px">
       <div class="col"><label>X축</label><input type="text" id="em-xl" value="${esc(g.xLabel||'Q')}"></div>
       <div class="col"><label>Y축</label><input type="text" id="em-yl" value="${esc(g.yLabel||'P')}"></div>
@@ -1832,10 +1926,12 @@ function openEditMeta(gid){
 }
 function submitMeta(gid){
   const g=GbyId(gid);if(!g)return;
-  g.title=document.getElementById('em-t')?.value||g.title;
-  g.desc=document.getElementById('em-d')?.value||g.desc;
-  g.xLabel=document.getElementById('em-xl')?.value||g.xLabel;
-  g.yLabel=document.getElementById('em-yl')?.value||g.yLabel;
+  // Direct assignment (not ||) — an emptied field should actually clear the
+  // value instead of silently reverting to whatever it was before (bug fix).
+  const t=document.getElementById('em-t');if(t)g.title=t.value;
+  const d=document.getElementById('em-d');if(d)g.desc=d.value;
+  const xl=document.getElementById('em-xl');if(xl)g.xLabel=xl.value;
+  const yl=document.getElementById('em-yl');if(yl)g.yLabel=yl.value;
   renderAll();renderRPanel(null);closeModal();
 }
 
