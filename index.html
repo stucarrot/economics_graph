@@ -3960,7 +3960,94 @@ function openManagePresets(){
         <button class="cbtn danger" onclick="deletePreset('${p.id}')">삭제</button>
       </div>`).join('')}
     </div>`;
-  openModal('프리셋 관리',html,`<button class="tb-btn primary" onclick="closeModal()">닫기</button>`);
+  openModal('프리셋 관리',html,
+    `<button class="tb-btn" onclick="openNewPresetForm()">+ 새 프리셋 추가</button>
+     <button class="tb-btn primary" onclick="closeModal()">닫기</button>`);
+}
+
+function openNewPresetForm(){
+  window._newPresetLines=[];
+  window._newPresetMeta={name:'',desc:'',xl:'Q',yl:'P',ct:'q1'};
+  renderNewPresetForm();
+}
+function npSyncMeta(){
+  const m=window._newPresetMeta=window._newPresetMeta||{};
+  const n=document.getElementById('np-name');if(n)m.name=n.value;
+  const d=document.getElementById('np-desc');if(d)m.desc=d.value;
+  const xl=document.getElementById('np-xl');if(xl)m.xl=xl.value;
+  const yl=document.getElementById('np-yl');if(yl)m.yl=yl.value;
+  const ct=document.getElementById('np-ct');if(ct)m.ct=ct.value;
+}
+function renderNewPresetForm(){
+  const lines=window._newPresetLines||[];
+  const meta=window._newPresetMeta=window._newPresetMeta||{name:'',desc:'',xl:'Q',yl:'P',ct:'q1'};
+  const linesHtml=lines.map((l,i)=>`
+    <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
+      <input type="text" placeholder="이름(예: D)" value="${esc(l.name||'')}" oninput="npUpdateLine(${i},'name',this.value)" style="width:56px;font-size:11px;padding:5px 6px">
+      <input type="text" placeholder="방정식표시(예: P=10-Q)" value="${esc(l.eq||'')}" oninput="npUpdateLine(${i},'eq',this.value)" style="flex:1;font-size:11px;padding:5px 6px">
+      <input type="number" placeholder="기울기" value="${l.slope??1}" step="0.1" oninput="npUpdateLine(${i},'slope',this.value)" style="width:64px;font-size:11px;padding:5px 6px">
+      <input type="number" placeholder="절편" value="${l.int??0}" step="0.1" oninput="npUpdateLine(${i},'int',this.value)" style="width:64px;font-size:11px;padding:5px 6px">
+      <input type="color" value="${l.color||'#3b82f6'}" oninput="npUpdateLine(${i},'color',this.value)" style="width:28px;padding:0;border:none">
+      <button class="cbtn danger" onclick="npRemoveLine(${i})">✕</button>
+    </div>`).join('');
+  const body=`
+    <div class="form-group"><label>프리셋 이름</label><input type="text" id="np-name" value="${esc(meta.name||'')}" placeholder="예: 관세 부과 모형"></div>
+    <div class="form-group"><label>설명 (선택)</label><input type="text" id="np-desc" value="${esc(meta.desc||'')}" placeholder="선택"></div>
+    <div class="row" style="gap:6px">
+      <div class="col"><label>X축 라벨</label><input type="text" id="np-xl" value="${esc(meta.xl||'Q')}"></div>
+      <div class="col"><label>Y축 라벨</label><input type="text" id="np-yl" value="${esc(meta.yl||'P')}"></div>
+    </div>
+    <div class="form-group" style="margin-top:6px"><label>좌표계</label>
+      <select id="np-ct">${[['q1','1사분면'],['q1_no','1사분면(원점無)'],['q14','1·4사분면'],['all','4사분면']].map(([v,n])=>`<option value="${v}"${meta.ct===v?' selected':''}>${n}</option>`).join('')}</select>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label style="display:flex;justify-content:space-between;align-items:center">직선 목록 (y = 기울기·x + 절편)
+        <button class="cbtn" onclick="npAddLine()">+ 선 추가</button></label>
+      <div style="font-size:10px;color:#9ca3af;margin-bottom:6px">비워두면 빈 그래프 프리셋이 됩니다. 곡선이 필요하면 저장 후 그래프 편집기에서 추가해 카드의 "★프리셋" 버튼으로 다시 저장하세요.</div>
+      <div id="np-lines-wrap">${linesHtml || '<div style="font-size:11px;color:#9ca3af">추가된 선이 없습니다</div>'}</div>
+    </div>`;
+  openModal('새 프리셋 추가', body,
+    `<button class="tb-btn" onclick="npSyncMeta();openManagePresets()">← 뒤로</button>
+     <button class="tb-btn primary" onclick="submitNewPreset()">저장</button>`);
+}
+function npAddLine(){
+  npSyncMeta();
+  (window._newPresetLines=window._newPresetLines||[]).push({name:'',eq:'',slope:1,int:0,color:COLORS[(window._newPresetLines||[]).length%COLORS.length]});
+  renderNewPresetForm();
+}
+function npRemoveLine(i){
+  npSyncMeta();
+  window._newPresetLines.splice(i,1);
+  renderNewPresetForm();
+}
+function npUpdateLine(i,field,val){
+  const l=(window._newPresetLines||[])[i]; if(!l) return;
+  l[field]=(field==='slope'||field==='int')?parseFloat(val):val;
+}
+function submitNewPreset(){
+  npSyncMeta();
+  const meta=window._newPresetMeta||{};
+  const name=(meta.name||'').trim();
+  if(!name){ alert('프리셋 이름을 입력하세요'); return; }
+  const preset={
+    id:'u_'+Date.now(),
+    name,
+    desc:meta.desc||'',
+    xl:meta.xl||'Q',
+    yl:meta.yl||'P',
+    ct:meta.ct||'q1',
+    lines:(window._newPresetLines||[]).filter(l=>(l.eq&&l.eq.trim())||(l.name&&l.name.trim())).map(l=>({
+      name:l.name||'', eq:l.eq||'', color:l.color||'#3b82f6', type:'line',
+      slope:isFinite(l.slope)?l.slope:1, int:isFinite(l.int)?l.int:0, w:2
+    })),
+    isUser:true
+  };
+  PRESETS.push(preset);
+  saveUserPresets();
+  window._newPresetLines=[];
+  window._newPresetMeta=null;
+  closeModal();
+  showToast('새 프리셋이 추가되었습니다');
 }
 
 function editPresetName(pid){
@@ -4563,7 +4650,7 @@ function renderAll(){
         <button class="cbtn" onclick="event.stopPropagation();exportSingle('${g.id}')">↓</button>
         <button class="cbtn danger" onclick="event.stopPropagation();delGraph('${g.id}')">✕</button>
       </div>`}
-      ${g.title?`<div class="card-title">${esc(g.title)}</div>`:''}
+      ${g.title?`<div class="card-title">${esc(g.title)}</div>`:`<div class="card-title" style="color:#c4c4c0;font-weight:400">(빈 그래프)</div>`}
       ${g.desc?`<div class="card-desc">${esc(g.desc)}</div>`:''}
       <div class="graph-svg-wrap" id="wrap-${g.id}">${svg}</div>
       ${eqHtml}
@@ -5689,7 +5776,7 @@ function openAddGraph(){
       <div class="preset-grid">${builtinPresets.map(p=>`<div class="pi${p.id==='sd'?' sel':''}" id="pi-${p.id}" onclick="selP('${p.id}')"><div class="pi-name">${esc(p.name)}</div><div class="pi-desc">${esc(p.desc)}</div></div>`).join('')}</div>
     </div>
     ${userSection}
-    <div class="form-group"><label>제목</label><input type="text" id="ag-title" value="수요·공급"></div>
+    <div class="form-group"><label>제목 (선택)</label><input type="text" id="ag-title" placeholder="(빈 그래프)"></div>
     <div class="form-group"><label>설명 (선택)</label><input type="text" id="ag-desc" placeholder="선택"></div>
     <div class="row" style="gap:6px">
       <div class="col"><label>X축 라벨</label><input type="text" id="ag-xl" value="Q"></div>
@@ -5729,7 +5816,7 @@ function submitAddGraph(){
 function openEditMeta(gid){
   const g=GbyId(gid);if(!g)return;
   const body=`
-    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 <span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(제목 없음)"></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 (선택) <span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(빈 그래프)"></div>
     <div class="form-group"><label>설명</label><input type="text" id="em-d" value="${esc(g.desc||'')}" placeholder="(설명 없음)"></div>
     <div class="row" style="gap:6px">
       <div class="col"><label>X축</label><input type="text" id="em-xl" value="${esc(g.xLabel||'Q')}"></div>
@@ -6225,9 +6312,10 @@ function gxRender(){
 }
 
 function gxCardHtml(b,i){
-  let bodyHtml='', title='';
+  let bodyHtml='', title='', isEmptyGraphTitle=false;
   if(b.type==='graph'){
     title = b.data.title||'';
+    if(!title){ title='(빈 그래프)'; isEmptyGraphTitle=true; }
     let svgHtml='';
     try{ svgHtml = renderSVG(b.data,false).svg; }catch(e){ svgHtml='<div style="color:var(--er);font-size:11px">그래프 렌더 오류</div>'; }
     bodyHtml = `<div class="gx-card-body">${svgHtml}</div>`;
@@ -6247,7 +6335,7 @@ function gxCardHtml(b,i){
       <button class="gx-cbtn" onclick="event.stopPropagation();gxDuplicateBlock(${i})" title="복제">⧉</button>
       <button class="gx-cbtn danger" onclick="event.stopPropagation();gxDeleteBlock(${i})" title="삭제">✕</button>
     </div>
-    ${title?`<div class="gx-card-title">${esc(title)}</div>`:''}
+    ${title?`<div class="gx-card-title"${isEmptyGraphTitle?' style="color:#c4c4c0;font-weight:400"':''}>${esc(title)}</div>`:''}
     ${bodyHtml}
   </div>`;
 }
