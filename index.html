@@ -4476,7 +4476,14 @@ function renderSVG(g,interactive){
         if(bp) labelQueue.push({x:bp.x,y:bp.y-7,text:l.name,color:c,anchor:'start'});
       }
     } else if(ltype==='2pt'){
-      const x0=parseFloat(l.x0||0),y0=parseFloat(l.y0||0),x1c=parseFloat(l.x1||10),y1c=parseFloat(l.y1||10);
+      // NOTE: use explicit null/undefined checks instead of `||` — a
+      // legitimate endpoint coordinate of exactly 0 (very common, e.g. a
+      // point on an axis) is falsy, so `l.x1||10` would silently replace a
+      // real 0 with 10 and shoot the line out to the edge of the chart.
+      const x0=Number.isFinite(l.x0)?l.x0:0;
+      const y0=Number.isFinite(l.y0)?l.y0:0;
+      const x1c=Number.isFinite(l.x1)?l.x1:10;
+      const y1c=Number.isFinite(l.y1)?l.y1:10;
       const pts=[];
       for(let i=0;i<=60;i++){
         const t=i/60;
@@ -5080,12 +5087,12 @@ function lineEditor(gid,idx,l){
       </div></div>`:
     l.type==='2pt'?`<div class="pf-group"><div class="pf-title">두 점</div>
       <div class="row" style="gap:5px">
-        <div class="col"><label>X₀</label><input type="number" value="${l.x0||0}" step="0.5" oninput="upLine('${gid}',${idx},'x0',+this.value)"></div>
-        <div class="col"><label>Y₀</label><input type="number" value="${l.y0||0}" step="0.5" oninput="upLine('${gid}',${idx},'y0',+this.value)"></div>
+        <div class="col"><label>X₀</label><input type="number" value="${Number.isFinite(l.x0)?l.x0:0}" step="0.5" oninput="upLine('${gid}',${idx},'x0',+this.value)"></div>
+        <div class="col"><label>Y₀</label><input type="number" value="${Number.isFinite(l.y0)?l.y0:0}" step="0.5" oninput="upLine('${gid}',${idx},'y0',+this.value)"></div>
       </div>
       <div class="row" style="gap:5px">
-        <div class="col"><label>X₁</label><input type="number" value="${l.x1||10}" step="0.5" oninput="upLine('${gid}',${idx},'x1',+this.value)"></div>
-        <div class="col"><label>Y₁</label><input type="number" value="${l.y1||10}" step="0.5" oninput="upLine('${gid}',${idx},'y1',+this.value)"></div>
+        <div class="col"><label>X₁</label><input type="number" value="${Number.isFinite(l.x1)?l.x1:10}" step="0.5" oninput="upLine('${gid}',${idx},'x1',+this.value)"></div>
+        <div class="col"><label>Y₁</label><input type="number" value="${Number.isFinite(l.y1)?l.y1:10}" step="0.5" oninput="upLine('${gid}',${idx},'y1',+this.value)"></div>
       </div></div>`:
     l.type==='curve'?`<div class="pf-group"><div class="pf-title">곡선 파라미터</div>
       <div class="form-group"><label>스케일</label><input type="number" value="${l.int||8}" step="0.5" oninput="upLine('${gid}',${idx},'int',+this.value)"></div>
