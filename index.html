@@ -4074,6 +4074,39 @@ loadUserPresets(); // Load on startup
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function G(){return GS.graphs.find(g=>g.id===GS.selectedId)}
 
+// ==================== INLINE MATH ($...$) FOR GRAPH LABELS ====================
+// Any graph text field (axis label, line name, point/area label, numbering) may
+// contain $...$ segments that should render as real math (KaTeX) instead of
+// literal dollar signs. hasGraphMath() is a cheap pre-check; graphMathHTML()
+// turns the mixed text into escaped-HTML-with-KaTeX for use inside an SVG
+// <foreignObject> (so it renders on the actual chart, not just HTML lists).
+function hasGraphMath(s){ return /\$[^$\n]+\$/.test(String(s||'')); }
+function graphMathHTML(s){
+  return String(s||'').split(/(\$[^$\n]+\$)/g).map(part=>{
+    if(part.length>1 && part.startsWith('$') && part.endsWith('$')){
+      try{ return katex.renderToString(part.slice(1,-1), {throwOnError:false, displayMode:false, trust:true, strict:false}); }
+      catch(e){ return esc(part); }
+    }
+    return esc(part);
+  }).join('');
+}
+// Builds an SVG string for a text label that may contain inline math. Falls
+// back to a plain <text> element when there's no $...$ (identical output to
+// before, so existing labels are unaffected).
+function svgLabel(text, x, y, {fontSize=12, fontWeight=600, color='#374151', anchor='start'}={}){
+  const t=String(text||'');
+  if(!hasGraphMath(t)){
+    const anchorAttr = anchor && anchor!=='start' ? ` text-anchor="${anchor}"` : '';
+    return `<text x="${x}" y="${y}"${anchorAttr} font-size="${fontSize}" font-weight="${fontWeight}" fill="${color}" style="pointer-events:none">${esc(t)}</text>`;
+  }
+  const html=graphMathHTML(t);
+  const tx = anchor==='middle' ? '-50%' : anchor==='end' ? '-100%' : '0%';
+  // Shift up so the box's baseline roughly matches where SVG text baseline would sit.
+  return `<foreignObject x="${x}" y="${y-fontSize}" width="1" height="1" style="overflow:visible;pointer-events:none">`
+    + `<div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;white-space:nowrap;transform:translate(${tx},0);font-size:${fontSize}px;font-weight:${fontWeight};color:${color};line-height:1.15">${html}</div>`
+    + `</foreignObject>`;
+}
+
 // ==================== SAFE MATH EXPRESSION PARSER ====================
 // Converts expression string into a JS function f(x) safely (no eval of arbitrary code)
 function parseFnExpr(expr){
@@ -4404,8 +4437,8 @@ function renderSVG(g,interactive){
   s+=`<polygon points="${ax0-4},${drawYMin+10} ${ax0+4},${drawYMin+10} ${ax0},${drawYMin}" fill="${axColor}"/>`;
   s+=`<polygon points="${drawXMax-10},${ay0-4} ${drawXMax-10},${ay0+4} ${drawXMax},${ay0}" fill="${axColor}"/>`;
   // Labels
-  s+=`<text x="${drawXMax+4}" y="${ay0+5}" font-size="13" font-weight="600" fill="${axColor}">${esc(g.xLabel||'X')}</text>`;
-  s+=`<text x="${ax0+4}" y="${drawYMin-4}" font-size="13" font-weight="600" fill="${axColor}">${esc(g.yLabel||'Y')}</text>`;
+  s+=svgLabel(g.xLabel||'X', drawXMax+4, ay0+5, {fontSize:13, fontWeight:600, color:axColor});
+  s+=svgLabel(g.yLabel||'Y', ax0+4, drawYMin-4, {fontSize:13, fontWeight:600, color:axColor});
   // Origin
   if(g.showOrigin&&ct!=='q1_no'){
     s+=`<text x="${ax0-14}" y="${ay0+13}" font-size="11" fill="#6b7280">O</text>`;
@@ -4577,8 +4610,7 @@ function renderSVG(g,interactive){
   // Resolve overlaps among line/point/area name labels (and against the axis
   // titles/origin), then draw them all on top of every shape at once.
   resolveLabelOverlaps(labelQueue,fixedLabels).forEach(l=>{
-    const anchorAttr=l.anchor&&l.anchor!=='start'?` text-anchor="${l.anchor}"`:'';
-    s+=`<text x="${l.x}" y="${l.y}"${anchorAttr} font-size="${l.fontSize||12}" font-weight="${l.fontWeight||600}" fill="${l.color||'#374151'}" style="pointer-events:none">${esc(l.text)}</text>`;
+    s+=svgLabel(l.text, l.x, l.y, {fontSize:l.fontSize||12, fontWeight:l.fontWeight||600, color:l.color||'#374151', anchor:l.anchor||'start'});
   });
 
   // Draw preview (in-progress line or area)
@@ -4645,7 +4677,7 @@ function renderAll(){
     const checked=GS.multiSel.has(g.id);
     const {svg}=renderSVG(g,true);
     const eqs=(g.lines||[]).filter(l=>l.eq);
-    const eqHtml=eqs.length?`<div class="eq-list">${eqs.map(l=>`<div class="eq-item"><span class="eq-dot" style="background:${l.color||'#2563eb'}${l.dashed?';border-top:2px dashed'+l.color:''}"></span><span><b style="color:${l.color||'#2563eb'}">${esc(l.name||'')}</b>${l.eq?' : '+esc(l.eq):''}</span></div>`).join('')}</div>`:'';
+    const eqHtml=eqs.length?`<div class="eq-list">${eqs.map(l=>`<div class="eq-item"><span class="eq-dot" style="background:${l.color||'#2563eb'}${l.dashed?';border-top:2px dashed'+l.color:''}"></span><span><b style="color:${l.color||'#2563eb'}">${graphMathHTML(l.name||'')}</b>${l.eq?' : '+graphMathHTML(l.eq):''}</span></div>`).join('')}</div>`:'';
     const cardClick=mm?`toggleMultiSel('${g.id}')`:`selectGraph('${g.id}')`;
     return `<div class="graph-card${sel&&!mm?' selected':''}${checked?' multi-selected':''}${sizeClass}" style="--legend-scale:${g.legendScale||1}" onclick="${cardClick}">
       ${mm?`<div class="gc-check${checked?' checked':''}">${checked?'✓':''}</div>`:`
@@ -4657,7 +4689,7 @@ function renderAll(){
         <button class="cbtn" onclick="event.stopPropagation();exportSingle('${g.id}')">↓</button>
         <button class="cbtn danger" onclick="event.stopPropagation();delGraph('${g.id}')">✕</button>
       </div>`}
-      ${g.title?`<div class="card-title">${esc(g.title)}</div>`:`<div class="card-title" style="color:#c4c4c0;font-weight:400">(빈 그래프)</div>`}
+      ${g.title?`<div class="card-title">${graphMathHTML(g.title)}</div>`:`<div class="card-title" style="color:#c4c4c0;font-weight:400">(빈 그래프)</div>`}
       ${g.desc?`<div class="card-desc">${esc(g.desc)}</div>`:''}
       <div class="graph-svg-wrap" id="wrap-${g.id}">${svg}</div>
       ${eqHtml}
@@ -4733,7 +4765,7 @@ function renderGraphList(){
   el.innerHTML=GS.graphs.length?GS.graphs.map((g,i)=>`
     <div class="graph-item${g.id===GS.selectedId?' active':''}" onclick="selectGraph('${g.id}')">
       <div class="gi-color" style="background:${g.lines?.[0]?.color||COLORS[i%COLORS.length]}"></div>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.title||'그래프'+(i+1))}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${graphMathHTML(g.title||'그래프'+(i+1))}</span>
       <span class="gi-del" onclick="event.stopPropagation();delGraph('${g.id}')">✕</span>
     </div>`).join(''):
     '<div style="padding:12px;text-align:center;color:#9ca3af;font-size:11px">없음</div>';
@@ -4939,8 +4971,8 @@ function renderCoordPanel(){
       <label class="chk"><input type="checkbox" ${g.showOrigin!==false?'checked':''} onchange="upG('${g.id}','showOrigin',this.checked);renderAll()"> 원점</label>
     </div>
     <div class="row" style="gap:5px">
-      <div class="col"><label>X축 라벨</label><input type="text" value="${esc(g.xLabel||'Q')}" onchange="upG('${g.id}','xLabel',this.value);renderAll()"></div>
-      <div class="col"><label>Y축 라벨</label><input type="text" value="${esc(g.yLabel||'P')}" onchange="upG('${g.id}','yLabel',this.value);renderAll()"></div>
+      <div class="col"><label>X축 라벨 <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(g.xLabel||'Q')}" onchange="upG('${g.id}','xLabel',this.value);renderAll()"></div>
+      <div class="col"><label>Y축 라벨 <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(g.yLabel||'P')}" onchange="upG('${g.id}','yLabel',this.value);renderAll()"></div>
     </div>
     <div class="form-group">
       ${legendScaleControlHtml(g)}
@@ -5013,7 +5045,7 @@ function renderRPanel(ctx){
       const isSel=GS.sel&&GS.sel.gid===g.id&&GS.sel.type==='line'&&GS.sel.idx===i;
       html+=`<div class="rp-item${isSel?' active':''}" onclick="selectElement('${g.id}','line',${i})">
         <div class="rp-dot" style="background:${l.color||'#2563eb'}"></div>
-        <span class="rp-name">${esc(l.name||'선'+(i+1))} <span style="color:#9ca3af;font-size:9px">${l.type||'line'}</span></span>
+        <span class="rp-name">${graphMathHTML(l.name||'선'+(i+1))} <span style="color:#9ca3af;font-size:9px">${l.type||'line'}</span></span>
         ${isSel?`<button class="cbtn" onclick="event.stopPropagation();openElProps()" style="font-size:10px;padding:2px 6px">속성</button>`:''}
         <span class="rp-del" onclick="event.stopPropagation();delLine('${g.id}',${i})">✕</span>
       </div>`;
@@ -5028,7 +5060,7 @@ function renderRPanel(ctx){
       const isSel=GS.sel&&GS.sel.gid===g.id&&GS.sel.type==='point'&&GS.sel.idx===i;
       html+=`<div class="rp-item${isSel?' active':''}" onclick="selectElement('${g.id}','point',${i})">
         <div class="rp-dot" style="background:${p.color||'#374151'}"></div>
-        <span class="rp-name">${esc(p.label||'점'+(i+1))} <span style="color:#9ca3af;font-size:9px">(${+p.x.toFixed(1)},${+p.y.toFixed(1)})</span></span>
+        <span class="rp-name">${graphMathHTML(p.label||'점'+(i+1))} <span style="color:#9ca3af;font-size:9px">(${+p.x.toFixed(1)},${+p.y.toFixed(1)})</span></span>
         ${isSel?`<button class="cbtn" onclick="event.stopPropagation();openElProps()" style="font-size:10px;padding:2px 6px">속성</button>`:''}
         <span class="rp-del" onclick="event.stopPropagation();delPoint('${g.id}',${i})">✕</span>
       </div>`;
@@ -5041,7 +5073,7 @@ function renderRPanel(ctx){
       const isSel=GS.sel&&GS.sel.gid===g.id&&GS.sel.type==='area'&&GS.sel.idx===i;
       html+=`<div class="rp-item${isSel?' active':''}" onclick="selectElement('${g.id}','area',${i})">
         <div class="rp-dot" style="background:${a.color||'#3b82f6'}"></div>
-        <span class="rp-name">${esc(a.label||'영역'+(i+1))}${a.hatch?' 빗금':''}</span>
+        <span class="rp-name">${graphMathHTML(a.label||'영역'+(i+1))}${a.hatch?' 빗금':''}</span>
         ${isSel?`<button class="cbtn" onclick="event.stopPropagation();openElProps()" style="font-size:10px;padding:2px 6px">속성</button>`:''}
         <span class="rp-del" onclick="event.stopPropagation();delArea('${g.id}',${i})">✕</span>
       </div>`;
@@ -5134,8 +5166,8 @@ function lineEditor(gid,idx,l){
   return `
     <div class="pf-group">
       <div class="pf-title">기본 정보</div>
-      <div class="form-group"><label>이름</label><input type="text" value="${esc(l.name||'')}" oninput="upLine('${gid}',${idx},'name',this.value)"></div>
-      <div class="form-group"><label>방정식 (표시용)</label><input type="text" value="${esc(l.eq||'')}" oninput="upLine('${gid}',${idx},'eq',this.value)" placeholder="예: P = -Q + 10"></div>
+      <div class="form-group"><label>이름 <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(l.name||'')}" oninput="upLine('${gid}',${idx},'name',this.value)"></div>
+      <div class="form-group"><label>방정식 (표시용) <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(l.eq||'')}" oninput="upLine('${gid}',${idx},'eq',this.value)" placeholder="예: P = -Q + 10 또는 $P=-Q+10$"></div>
       <div class="form-group"><label>유형</label>
         <select onchange="upLine('${gid}',${idx},'type',this.value);renderAll();renderRPanel({type:'line',idx:${idx}})">${typOpts}</select>
       </div>
@@ -5823,7 +5855,7 @@ function submitAddGraph(){
 function openEditMeta(gid){
   const g=GbyId(gid);if(!g)return;
   const body=`
-    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 (선택) <span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(빈 그래프)"></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 (선택) <span style="font-weight:400;color:#9ca3af">$ 수식 가능</span><span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(빈 그래프)"></div>
     <div class="form-group"><label>설명</label><input type="text" id="em-d" value="${esc(g.desc||'')}" placeholder="(설명 없음)"></div>
     <div class="row" style="gap:6px">
       <div class="col"><label>X축</label><input type="text" id="em-xl" value="${esc(g.xLabel||'Q')}"></div>
@@ -6042,9 +6074,9 @@ function openPreview(){
     const eqBase=n===1?15:n===2?12:10;
     const dotBase=n===1?18:n===2?15:12;
     const eqHtml=eqs.length
-      ?`<div style="font-size:${(eqBase*ls).toFixed(1)}px;color:#555;margin-top:8px;border-top:1px solid #f0f0ec;padding-top:6px;display:flex;flex-direction:column;gap:4px">${eqs.map(l=>`<div style="display:flex;align-items:center;gap:7px"><span style="width:${(dotBase*ls).toFixed(1)}px;height:3px;border-radius:2px;background:${l.color||'#2563eb'};flex-shrink:0;display:inline-block"></span><span><b style="color:${l.color||'#2563eb'}">${esc(l.name||'')}</b>${l.eq?' : '+esc(l.eq):''}</span></div>`).join('')}</div>`:'';
+      ?`<div style="font-size:${(eqBase*ls).toFixed(1)}px;color:#555;margin-top:8px;border-top:1px solid #f0f0ec;padding-top:6px;display:flex;flex-direction:column;gap:4px">${eqs.map(l=>`<div style="display:flex;align-items:center;gap:7px"><span style="width:${(dotBase*ls).toFixed(1)}px;height:3px;border-radius:2px;background:${l.color||'#2563eb'};flex-shrink:0;display:inline-block"></span><span><b style="color:${l.color||'#2563eb'}">${graphMathHTML(l.name||'')}</b>${l.eq?' : '+graphMathHTML(l.eq):''}</span></div>`).join('')}</div>`:'';
     return `<div style="background:#fff;border-radius:10px;padding:14px">
-      ${g.title?`<div style="font-size:${n===1?'24px':n===2?'16px':'13px'};font-weight:600;margin-bottom:4px">${esc(g.title)}</div>`:''}
+      ${g.title?`<div style="font-size:${n===1?'24px':n===2?'16px':'13px'};font-weight:600;margin-bottom:4px">${graphMathHTML(g.title)}</div>`:''}
       ${g.desc?`<div style="font-size:${n===1?'15px':n===2?'12px':'10px'};color:#9ca3af;margin-bottom:6px">${esc(g.desc)}</div>`:''}
       <div>${svg}</div>
       ${eqHtml}
@@ -6342,7 +6374,7 @@ function gxCardHtml(b,i){
       <button class="gx-cbtn" onclick="event.stopPropagation();gxDuplicateBlock(${i})" title="복제">⧉</button>
       <button class="gx-cbtn danger" onclick="event.stopPropagation();gxDeleteBlock(${i})" title="삭제">✕</button>
     </div>
-    ${title?`<div class="gx-card-title"${isEmptyGraphTitle?' style="color:#c4c4c0;font-weight:400"':''}>${esc(title)}</div>`:''}
+    ${title?`<div class="gx-card-title"${isEmptyGraphTitle?' style="color:#c4c4c0;font-weight:400"':''}>${graphMathHTML(title)}</div>`:''}
     ${bodyHtml}
   </div>`;
 }
