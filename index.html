@@ -898,6 +898,21 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
 .gxlib-card .gxlib-desc { font-size:11px; color:var(--tm); margin-bottom:10px; min-height:14px; }
 .gxlib-card .gxlib-acts { display:flex; gap:6px; flex-wrap:wrap; }
 
+/* ══════════════════════════════════════
+   AI (Gemini) integration
+══════════════════════════════════════ */
+.ai-badge { display:inline-block; background:linear-gradient(135deg,#7c3aed,#2563eb); color:#fff; font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; letter-spacing:.3px; }
+.ai-hint { font-size:11px; color:var(--tm); line-height:1.5; margin-bottom:10px; }
+.ai-mode-row { display:flex; gap:8px; margin-bottom:10px; }
+.ai-mode-btn { flex:1; padding:9px 8px; border:1px solid var(--bd0); border-radius:8px; background:var(--sf2); color:var(--tx); cursor:pointer; font-size:12px; text-align:center; }
+.ai-mode-btn.on { border-color:#7c3aed; background:rgba(124,58,237,.12); color:#7c3aed; font-weight:600; }
+.ai-mode-btn:disabled { opacity:.4; cursor:not-allowed; }
+.ai-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--bd0); }
+.ai-spinner { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:ai-spin .7s linear infinite; margin-right:6px; vertical-align:-2px; }
+@keyframes ai-spin { to { transform:rotate(360deg); } }
+.ai-error { background:rgba(220,38,38,.1); color:#dc2626; border:1px solid rgba(220,38,38,.3); border-radius:8px; padding:10px 12px; font-size:12px; margin-top:10px; white-space:pre-wrap; }
+.ai-status { font-size:11.5px; color:var(--tm); margin-top:8px; }
+
 </style>
 </head>
 <body>
@@ -924,6 +939,7 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
     </div>
   </div>
   <div class="topbar-spacer"></div>
+  <button id="ai-settings-btn" onclick="aiOpenSettingsModal()" title="Google AI Studio(Gemini) API 키 설정 — AI로 그래프/그리드/수식 만들기에 사용됩니다" style="border:1px solid var(--bd0);border-radius:8px;background:var(--sf2);color:var(--tx);font-size:11px;padding:6px 10px;cursor:pointer;margin-right:6px;font-family:var(--sans)">⚙ AI 설정</button>
   <button id="theme-toggle" onclick="toggleTheme()" title="라이트/다크 모드 전환">🌙</button>
   <div class="topbar-hint">
     <span><span class="kbd">@a</span> α</span>
@@ -1027,6 +1043,7 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
       <div id="ed-actions" class="ed-actions">
         <div class="actions-row-title">
           <input type="text" id="ftitle" class="ftitle-input" placeholder="수식 제목 (선택)">
+          <button class="act-btn" onclick="aiOpenFormulaModal()" title="대표적인 수식을 검색/입력하지 않고 AI에게 요청해서 바로 불러오기">✨ AI로 가져오기</button>
           <button class="act-btn primary" onclick="saveFormula()"><span id="save-btn-label">💾 저장</span></button>
         </div>
         <div class="actions-row-buttons">
@@ -1071,6 +1088,7 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
   <span class="tb-label">📈 경제학 그래프 생성기</span>
   <div class="tb-sep"></div>
   <button class="tb-btn primary" onclick="openAddGraph()">+ 그래프 추가</button>
+  <button class="tb-btn" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border-color:transparent" onclick="aiOpenGraphModal()">✨ AI로 만들기/수정</button>
   <button class="tb-btn" onclick="openGridTitle()">📋 그리드 제목</button>
   <button class="tb-btn" onclick="openManagePresets()">⭐ 프리셋 관리</button>
   <button class="tb-btn" onclick="openGridLibrary()">🗂 라이브러리</button>
@@ -1099,6 +1117,7 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
   <span class="tb-label">📈 그래프</span>
   <div class="tb-sep"></div>
   <button class="tb-btn primary" onclick="openAddGraph()">+ 추가</button>
+  <button class="tb-btn" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border-color:transparent" onclick="aiOpenGraphModal()">✨ AI</button>
   <button class="tb-btn" onclick="openGridTitle()">제목</button>
   <button class="tb-btn" onclick="openGridLibrary()">🗂 라이브러리</button>
   <button class="tb-btn" id="tb-multi-m" onclick="toggleMultiMode()">☑ 다중선택</button>
@@ -1350,6 +1369,7 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
 <div id="tab-grid-ed" class="tab-pane">
   <div class="gx-toolbar">
     <button class="gx-btn primary" onclick="gxOpenPicker()">+ 블록 추가</button>
+    <button class="gx-btn" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border-color:transparent" onclick="aiOpenGridModal()">✨ AI로 그리드 채우기</button>
     <div class="gx-sep"></div>
     <span class="gx-label">열</span>
     <input type="number" class="gx-num" id="gx-cols" min="1" max="12" value="3" onchange="gxSetCols(this.value)">
@@ -1474,6 +1494,14 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
       <button class="gx-btn" onclick="gxCancelEditBlock()">취소</button>
       <button class="gx-btn primary" onclick="gxSaveEditBlock()">저장하고 돌아가기</button>
     </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━ AI (Gemini) MODAL — settings / graph / grid / formula ━━━━━━━━━━━━━━━ -->
+<div id="ai-modal-bg" onclick="aiModalBgClick(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:center;justify-content:center;padding:20px">
+  <div id="ai-modal-box" style="background:var(--sf1);border-radius:12px;width:min(600px,96vw);max-height:88vh;overflow:auto;padding:20px 22px">
+    <div id="ai-modal-title" style="font-size:15px;font-weight:700;margin-bottom:12px;color:var(--tb);display:flex;align-items:center;gap:6px"></div>
+    <div id="ai-modal-content"></div>
   </div>
 </div>
 
@@ -4072,40 +4100,36 @@ function deletePreset(pid){
 loadUserPresets(); // Load on startup
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function G(){return GS.graphs.find(g=>g.id===GS.selectedId)}
 
-// ==================== INLINE MATH ($...$) FOR GRAPH LABELS ====================
-// Any graph text field (axis label, line name, point/area label, numbering) may
-// contain $...$ segments that should render as real math (KaTeX) instead of
-// literal dollar signs. hasGraphMath() is a cheap pre-check; graphMathHTML()
-// turns the mixed text into escaped-HTML-with-KaTeX for use inside an SVG
-// <foreignObject> (so it renders on the actual chart, not just HTML lists).
-function hasGraphMath(s){ return /\$[^$\n]+\$/.test(String(s||'')); }
-function graphMathHTML(s){
-  return String(s||'').split(/(\$[^$\n]+\$)/g).map(part=>{
-    if(part.length>1 && part.startsWith('$') && part.endsWith('$')){
-      try{ return katex.renderToString(part.slice(1,-1), {throwOnError:false, displayMode:false, trust:true, strict:false}); }
-      catch(e){ return esc(part); }
-    }
-    return esc(part);
-  }).join('');
+// Renders a graph label (line name, point label, area label, axis label)
+// as a foreignObject containing KaTeX-capable HTML instead of a plain SVG
+// <text>, so users can type things like `$P_1$`, `E^*` mixed with plain
+// text in any of these fields (via renderCellHTML's inline $...$ math).
+// `x`/`y` are treated as the anchor point (matching the old text-anchor
+// semantics): 'start' → box grows right from x, 'middle' → box centered on
+// x, 'end' → box ends at x. Falls back to a plain escaped <text> if KaTeX
+// isn't available or the content fails to render.
+function mathLabelSvg(x,y,text,opts){
+  opts=opts||{};
+  const t=(text==null)?'':String(text);
+  if(!t) return '';
+  const color=opts.color||'#374151';
+  const fontSize=opts.fontSize||13;
+  const fontWeight=opts.fontWeight||600;
+  const anchor=opts.anchor||'start';
+  let html;
+  try{ html=renderCellHTML(t); }catch(e){ html=esc(t); }
+  const BW=280, BH=Math.max(24,fontSize+14);
+  let bx,justify;
+  if(anchor==='middle'){ bx=x-BW/2; justify='center'; }
+  else if(anchor==='end'){ bx=x-BW; justify='flex-end'; }
+  else { bx=x; justify='flex-start'; }
+  const by=y-BH/2-1;
+  return `<foreignObject x="${bx}" y="${by}" width="${BW}" height="${BH}" style="overflow:visible;pointer-events:none">`+
+    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:center;justify-content:${justify};font-size:${fontSize}px;font-weight:${fontWeight};color:${color};font-family:inherit;white-space:nowrap;line-height:1.15">${html}</div>`+
+  `</foreignObject>`;
 }
-// Builds an SVG string for a text label that may contain inline math. Falls
-// back to a plain <text> element when there's no $...$ (identical output to
-// before, so existing labels are unaffected).
-function svgLabel(text, x, y, {fontSize=12, fontWeight=600, color='#374151', anchor='start'}={}){
-  const t=String(text||'');
-  if(!hasGraphMath(t)){
-    const anchorAttr = anchor && anchor!=='start' ? ` text-anchor="${anchor}"` : '';
-    return `<text x="${x}" y="${y}"${anchorAttr} font-size="${fontSize}" font-weight="${fontWeight}" fill="${color}" style="pointer-events:none">${esc(t)}</text>`;
-  }
-  const html=graphMathHTML(t);
-  const tx = anchor==='middle' ? '-50%' : anchor==='end' ? '-100%' : '0%';
-  // Shift up so the box's baseline roughly matches where SVG text baseline would sit.
-  return `<foreignObject x="${x}" y="${y-fontSize}" width="1" height="1" style="overflow:visible;pointer-events:none">`
-    + `<div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;white-space:nowrap;transform:translate(${tx},0);font-size:${fontSize}px;font-weight:${fontWeight};color:${color};line-height:1.15">${html}</div>`
-    + `</foreignObject>`;
-}
+function G(){return GS.graphs.find(g=>g.id===GS.selectedId)}
 
 // ==================== SAFE MATH EXPRESSION PARSER ====================
 // Converts expression string into a JS function f(x) safely (no eval of arbitrary code)
@@ -4437,8 +4461,8 @@ function renderSVG(g,interactive){
   s+=`<polygon points="${ax0-4},${drawYMin+10} ${ax0+4},${drawYMin+10} ${ax0},${drawYMin}" fill="${axColor}"/>`;
   s+=`<polygon points="${drawXMax-10},${ay0-4} ${drawXMax-10},${ay0+4} ${drawXMax},${ay0}" fill="${axColor}"/>`;
   // Labels
-  s+=svgLabel(g.xLabel||'X', drawXMax+4, ay0+5, {fontSize:13, fontWeight:600, color:axColor});
-  s+=svgLabel(g.yLabel||'Y', ax0+4, drawYMin-4, {fontSize:13, fontWeight:600, color:axColor});
+  s+=mathLabelSvg(drawXMax+4,ay0+5,g.xLabel||'X',{color:axColor,fontSize:13,fontWeight:600,anchor:'start'});
+  s+=mathLabelSvg(ax0+4,drawYMin-4,g.yLabel||'Y',{color:axColor,fontSize:13,fontWeight:600,anchor:'start'});
   // Origin
   if(g.showOrigin&&ct!=='q1_no'){
     s+=`<text x="${ax0-14}" y="${ay0+13}" font-size="11" fill="#6b7280">O</text>`;
@@ -4610,7 +4634,7 @@ function renderSVG(g,interactive){
   // Resolve overlaps among line/point/area name labels (and against the axis
   // titles/origin), then draw them all on top of every shape at once.
   resolveLabelOverlaps(labelQueue,fixedLabels).forEach(l=>{
-    s+=svgLabel(l.text, l.x, l.y, {fontSize:l.fontSize||12, fontWeight:l.fontWeight||600, color:l.color||'#374151', anchor:l.anchor||'start'});
+    s+=mathLabelSvg(l.x,l.y,l.text,{color:l.color,fontSize:l.fontSize,fontWeight:l.fontWeight,anchor:l.anchor});
   });
 
   // Draw preview (in-progress line or area)
@@ -4677,7 +4701,7 @@ function renderAll(){
     const checked=GS.multiSel.has(g.id);
     const {svg}=renderSVG(g,true);
     const eqs=(g.lines||[]).filter(l=>l.eq);
-    const eqHtml=eqs.length?`<div class="eq-list">${eqs.map(l=>`<div class="eq-item"><span class="eq-dot" style="background:${l.color||'#2563eb'}${l.dashed?';border-top:2px dashed'+l.color:''}"></span><span><b style="color:${l.color||'#2563eb'}">${graphMathHTML(l.name||'')}</b>${l.eq?' : '+graphMathHTML(l.eq):''}</span></div>`).join('')}</div>`:'';
+    const eqHtml=eqs.length?`<div class="eq-list">${eqs.map(l=>`<div class="eq-item"><span class="eq-dot" style="background:${l.color||'#2563eb'}${l.dashed?';border-top:2px dashed'+l.color:''}"></span><span><b style="color:${l.color||'#2563eb'}">${renderCellHTML(l.name||'')}</b>${l.eq?' : '+renderCellHTML(l.eq):''}</span></div>`).join('')}</div>`:'';
     const cardClick=mm?`toggleMultiSel('${g.id}')`:`selectGraph('${g.id}')`;
     return `<div class="graph-card${sel&&!mm?' selected':''}${checked?' multi-selected':''}${sizeClass}" style="--legend-scale:${g.legendScale||1}" onclick="${cardClick}">
       ${mm?`<div class="gc-check${checked?' checked':''}">${checked?'✓':''}</div>`:`
@@ -4689,8 +4713,8 @@ function renderAll(){
         <button class="cbtn" onclick="event.stopPropagation();exportSingle('${g.id}')">↓</button>
         <button class="cbtn danger" onclick="event.stopPropagation();delGraph('${g.id}')">✕</button>
       </div>`}
-      ${g.title?`<div class="card-title">${graphMathHTML(g.title)}</div>`:`<div class="card-title" style="color:#c4c4c0;font-weight:400">(빈 그래프)</div>`}
-      ${g.desc?`<div class="card-desc">${esc(g.desc)}</div>`:''}
+      ${g.title?`<div class="card-title">${renderCellHTML(g.title)}</div>`:`<div class="card-title" style="color:#c4c4c0;font-weight:400">(빈 그래프)</div>`}
+      ${g.desc?`<div class="card-desc">${renderCellHTML(g.desc)}</div>`:''}
       <div class="graph-svg-wrap" id="wrap-${g.id}">${svg}</div>
       ${eqHtml}
     </div>`;
@@ -4765,7 +4789,7 @@ function renderGraphList(){
   el.innerHTML=GS.graphs.length?GS.graphs.map((g,i)=>`
     <div class="graph-item${g.id===GS.selectedId?' active':''}" onclick="selectGraph('${g.id}')">
       <div class="gi-color" style="background:${g.lines?.[0]?.color||COLORS[i%COLORS.length]}"></div>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${graphMathHTML(g.title||'그래프'+(i+1))}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.title||'그래프'+(i+1))}</span>
       <span class="gi-del" onclick="event.stopPropagation();delGraph('${g.id}')">✕</span>
     </div>`).join(''):
     '<div style="padding:12px;text-align:center;color:#9ca3af;font-size:11px">없음</div>';
@@ -4971,8 +4995,8 @@ function renderCoordPanel(){
       <label class="chk"><input type="checkbox" ${g.showOrigin!==false?'checked':''} onchange="upG('${g.id}','showOrigin',this.checked);renderAll()"> 원점</label>
     </div>
     <div class="row" style="gap:5px">
-      <div class="col"><label>X축 라벨 <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(g.xLabel||'Q')}" onchange="upG('${g.id}','xLabel',this.value);renderAll()"></div>
-      <div class="col"><label>Y축 라벨 <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(g.yLabel||'P')}" onchange="upG('${g.id}','yLabel',this.value);renderAll()"></div>
+      <div class="col"><label>X축 라벨</label><input type="text" value="${esc(g.xLabel||'Q')}" onchange="upG('${g.id}','xLabel',this.value);renderAll()"></div>
+      <div class="col"><label>Y축 라벨</label><input type="text" value="${esc(g.yLabel||'P')}" onchange="upG('${g.id}','yLabel',this.value);renderAll()"></div>
     </div>
     <div class="form-group">
       ${legendScaleControlHtml(g)}
@@ -5045,7 +5069,7 @@ function renderRPanel(ctx){
       const isSel=GS.sel&&GS.sel.gid===g.id&&GS.sel.type==='line'&&GS.sel.idx===i;
       html+=`<div class="rp-item${isSel?' active':''}" onclick="selectElement('${g.id}','line',${i})">
         <div class="rp-dot" style="background:${l.color||'#2563eb'}"></div>
-        <span class="rp-name">${graphMathHTML(l.name||'선'+(i+1))} <span style="color:#9ca3af;font-size:9px">${l.type||'line'}</span></span>
+        <span class="rp-name">${esc(l.name||'선'+(i+1))} <span style="color:#9ca3af;font-size:9px">${l.type||'line'}</span></span>
         ${isSel?`<button class="cbtn" onclick="event.stopPropagation();openElProps()" style="font-size:10px;padding:2px 6px">속성</button>`:''}
         <span class="rp-del" onclick="event.stopPropagation();delLine('${g.id}',${i})">✕</span>
       </div>`;
@@ -5060,7 +5084,7 @@ function renderRPanel(ctx){
       const isSel=GS.sel&&GS.sel.gid===g.id&&GS.sel.type==='point'&&GS.sel.idx===i;
       html+=`<div class="rp-item${isSel?' active':''}" onclick="selectElement('${g.id}','point',${i})">
         <div class="rp-dot" style="background:${p.color||'#374151'}"></div>
-        <span class="rp-name">${graphMathHTML(p.label||'점'+(i+1))} <span style="color:#9ca3af;font-size:9px">(${+p.x.toFixed(1)},${+p.y.toFixed(1)})</span></span>
+        <span class="rp-name">${esc(p.label||'점'+(i+1))} <span style="color:#9ca3af;font-size:9px">(${+p.x.toFixed(1)},${+p.y.toFixed(1)})</span></span>
         ${isSel?`<button class="cbtn" onclick="event.stopPropagation();openElProps()" style="font-size:10px;padding:2px 6px">속성</button>`:''}
         <span class="rp-del" onclick="event.stopPropagation();delPoint('${g.id}',${i})">✕</span>
       </div>`;
@@ -5073,7 +5097,7 @@ function renderRPanel(ctx){
       const isSel=GS.sel&&GS.sel.gid===g.id&&GS.sel.type==='area'&&GS.sel.idx===i;
       html+=`<div class="rp-item${isSel?' active':''}" onclick="selectElement('${g.id}','area',${i})">
         <div class="rp-dot" style="background:${a.color||'#3b82f6'}"></div>
-        <span class="rp-name">${graphMathHTML(a.label||'영역'+(i+1))}${a.hatch?' 빗금':''}</span>
+        <span class="rp-name">${esc(a.label||'영역'+(i+1))}${a.hatch?' 빗금':''}</span>
         ${isSel?`<button class="cbtn" onclick="event.stopPropagation();openElProps()" style="font-size:10px;padding:2px 6px">속성</button>`:''}
         <span class="rp-del" onclick="event.stopPropagation();delArea('${g.id}',${i})">✕</span>
       </div>`;
@@ -5166,8 +5190,8 @@ function lineEditor(gid,idx,l){
   return `
     <div class="pf-group">
       <div class="pf-title">기본 정보</div>
-      <div class="form-group"><label>이름 <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(l.name||'')}" oninput="upLine('${gid}',${idx},'name',this.value)"></div>
-      <div class="form-group"><label>방정식 (표시용) <span style="font-weight:400;color:#9ca3af">($ 수식 가능)</span></label><input type="text" value="${esc(l.eq||'')}" oninput="upLine('${gid}',${idx},'eq',this.value)" placeholder="예: P = -Q + 10 또는 $P=-Q+10$"></div>
+      <div class="form-group"><label>이름</label><input type="text" value="${esc(l.name||'')}" oninput="upLine('${gid}',${idx},'name',this.value)"></div>
+      <div class="form-group"><label>방정식 (표시용)</label><input type="text" value="${esc(l.eq||'')}" oninput="upLine('${gid}',${idx},'eq',this.value)" placeholder="예: P = -Q + 10"></div>
       <div class="form-group"><label>유형</label>
         <select onchange="upLine('${gid}',${idx},'type',this.value);renderAll();renderRPanel({type:'line',idx:${idx}})">${typOpts}</select>
       </div>
@@ -5855,7 +5879,7 @@ function submitAddGraph(){
 function openEditMeta(gid){
   const g=GbyId(gid);if(!g)return;
   const body=`
-    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 (선택) <span style="font-weight:400;color:#9ca3af">$ 수식 가능</span><span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(빈 그래프)"></div>
+    <div class="form-group"><label style="display:flex;align-items:center;justify-content:space-between">제목 (선택) <span style="cursor:pointer;color:#9ca3af;font-weight:400" onclick="document.getElementById('em-t').value=''">✕ 제목 지우기</span></label><input type="text" id="em-t" value="${esc(g.title||'')}" placeholder="(빈 그래프)"></div>
     <div class="form-group"><label>설명</label><input type="text" id="em-d" value="${esc(g.desc||'')}" placeholder="(설명 없음)"></div>
     <div class="row" style="gap:6px">
       <div class="col"><label>X축</label><input type="text" id="em-xl" value="${esc(g.xLabel||'Q')}"></div>
@@ -6074,9 +6098,9 @@ function openPreview(){
     const eqBase=n===1?15:n===2?12:10;
     const dotBase=n===1?18:n===2?15:12;
     const eqHtml=eqs.length
-      ?`<div style="font-size:${(eqBase*ls).toFixed(1)}px;color:#555;margin-top:8px;border-top:1px solid #f0f0ec;padding-top:6px;display:flex;flex-direction:column;gap:4px">${eqs.map(l=>`<div style="display:flex;align-items:center;gap:7px"><span style="width:${(dotBase*ls).toFixed(1)}px;height:3px;border-radius:2px;background:${l.color||'#2563eb'};flex-shrink:0;display:inline-block"></span><span><b style="color:${l.color||'#2563eb'}">${graphMathHTML(l.name||'')}</b>${l.eq?' : '+graphMathHTML(l.eq):''}</span></div>`).join('')}</div>`:'';
+      ?`<div style="font-size:${(eqBase*ls).toFixed(1)}px;color:#555;margin-top:8px;border-top:1px solid #f0f0ec;padding-top:6px;display:flex;flex-direction:column;gap:4px">${eqs.map(l=>`<div style="display:flex;align-items:center;gap:7px"><span style="width:${(dotBase*ls).toFixed(1)}px;height:3px;border-radius:2px;background:${l.color||'#2563eb'};flex-shrink:0;display:inline-block"></span><span><b style="color:${l.color||'#2563eb'}">${esc(l.name||'')}</b>${l.eq?' : '+esc(l.eq):''}</span></div>`).join('')}</div>`:'';
     return `<div style="background:#fff;border-radius:10px;padding:14px">
-      ${g.title?`<div style="font-size:${n===1?'24px':n===2?'16px':'13px'};font-weight:600;margin-bottom:4px">${graphMathHTML(g.title)}</div>`:''}
+      ${g.title?`<div style="font-size:${n===1?'24px':n===2?'16px':'13px'};font-weight:600;margin-bottom:4px">${esc(g.title)}</div>`:''}
       ${g.desc?`<div style="font-size:${n===1?'15px':n===2?'12px':'10px'};color:#9ca3af;margin-bottom:6px">${esc(g.desc)}</div>`:''}
       <div>${svg}</div>
       ${eqHtml}
@@ -6374,7 +6398,7 @@ function gxCardHtml(b,i){
       <button class="gx-cbtn" onclick="event.stopPropagation();gxDuplicateBlock(${i})" title="복제">⧉</button>
       <button class="gx-cbtn danger" onclick="event.stopPropagation();gxDeleteBlock(${i})" title="삭제">✕</button>
     </div>
-    ${title?`<div class="gx-card-title"${isEmptyGraphTitle?' style="color:#c4c4c0;font-weight:400"':''}>${graphMathHTML(title)}</div>`:''}
+    ${title?`<div class="gx-card-title"${isEmptyGraphTitle?' style="color:#c4c4c0;font-weight:400"':''}>${renderCellHTML(title)}</div>`:''}
     ${bodyHtml}
   </div>`;
 }
@@ -6745,6 +6769,426 @@ function renderGridLibTab(){
 /* ---------- Init ---------- */
 loadGraphLibrary();
 loadGridLibraryStore();
+
+</script>
+
+<script>
+
+/* ════════════════════════════════════════════════════════════
+   AI (Google AI Studio / Gemini) INTEGRATION
+   Lets the user describe what they want in plain Korean text and
+   have Gemini generate/modify a graph, a whole grid of blocks, or
+   a formula, using the app's own JSON data model.
+════════════════════════════════════════════════════════════ */
+
+/* ---------- Settings (API key + model), stored locally only ---------- */
+function aiGetSettings(){
+  try{
+    const raw = localStorage.getItem('merged_ai_settings');
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return { apiKey:'', model:'gemini-2.5-flash' };
+}
+function aiSaveSettingsObj(s){
+  try{ localStorage.setItem('merged_ai_settings', JSON.stringify(s)); }catch(e){}
+}
+
+function aiOpenSettingsModal(){
+  const s = aiGetSettings();
+  aiShowModal('⚙ AI 설정 (Google AI Studio)', `
+    <div class="ai-hint">
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7c3aed">Google AI Studio</a>에서 무료로 API 키를 발급받아 붙여넣으세요.
+      키는 이 브라우저에만(localStorage) 저장되며 외부로 전송되지 않습니다 — 실제 요청은 사용자의 브라우저에서 Google 서버로 직접 전송됩니다.
+    </div>
+    <div class="gx-pop-form">
+      <label>API 키</label>
+      <input type="password" id="ai-set-key" value="${esc(s.apiKey||'')}" placeholder="AIza...">
+      <label>모델</label>
+      <select id="ai-set-model">
+        ${['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash'].map(m=>`<option value="${m}"${s.model===m?' selected':''}>${m}</option>`).join('')}
+        <option value="__custom__"${!['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash'].includes(s.model)?' selected':''}>직접 입력…</option>
+      </select>
+      <input type="text" id="ai-set-model-custom" value="${!['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash'].includes(s.model)?esc(s.model||''):''}" placeholder="모델 이름 직접 입력" style="margin-top:6px;${['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash'].includes(s.model)?'display:none':''}">
+    </div>
+    <div class="ai-actions">
+      <button class="gx-btn" onclick="aiCloseModal()">닫기</button>
+      <button class="gx-btn primary" onclick="aiSaveSettingsFromModal()">저장</button>
+    </div>
+  `);
+  const sel = document.getElementById('ai-set-model');
+  sel.addEventListener('change', ()=>{
+    document.getElementById('ai-set-model-custom').style.display = sel.value==='__custom__' ? '' : 'none';
+  });
+}
+function aiSaveSettingsFromModal(){
+  const key = document.getElementById('ai-set-key').value.trim();
+  const sel = document.getElementById('ai-set-model').value;
+  const model = sel==='__custom__' ? (document.getElementById('ai-set-model-custom').value.trim()||'gemini-2.5-flash') : sel;
+  aiSaveSettingsObj({ apiKey:key, model });
+  aiCloseModal();
+  showToast('AI 설정이 저장되었습니다');
+}
+function aiRequireKey(){
+  const s = aiGetSettings();
+  if(!s.apiKey){
+    showToast('먼저 ⚙ AI 설정에서 API 키를 입력해주세요');
+    aiOpenSettingsModal();
+    return null;
+  }
+  return s;
+}
+
+/* ---------- Shared modal shell ---------- */
+function aiShowModal(title, html){
+  document.getElementById('ai-modal-title').innerHTML = title;
+  document.getElementById('ai-modal-content').innerHTML = html;
+  document.getElementById('ai-modal-bg').style.display = 'flex';
+}
+function aiCloseModal(){
+  document.getElementById('ai-modal-bg').style.display = 'none';
+}
+function aiModalBgClick(e){
+  if(e.target.id==='ai-modal-bg') aiCloseModal();
+}
+function aiSetBusy(busy, msg){
+  const btn = document.getElementById('ai-submit-btn');
+  const status = document.getElementById('ai-status');
+  if(btn){ btn.disabled = busy; btn.innerHTML = busy ? `<span class="ai-spinner"></span>생성 중…` : btn.dataset.label; }
+  if(status) status.textContent = busy ? (msg||'Gemini에게 요청하는 중입니다…') : '';
+}
+function aiShowError(msg){
+  const el = document.getElementById('ai-error');
+  if(el){ el.style.display='block'; el.textContent = msg; }
+}
+function aiClearError(){
+  const el = document.getElementById('ai-error');
+  if(el){ el.style.display='none'; el.textContent=''; }
+}
+
+/* ---------- Core Gemini call ---------- */
+async function aiCallGemini(systemPrompt, userPrompt){
+  const settings = aiRequireKey();
+  if(!settings) throw new Error('__NO_KEY__');
+  const model = settings.model || 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(settings.apiKey)}`;
+  const body = {
+    contents: [{ role:'user', parts:[{ text:userPrompt }] }],
+    systemInstruction: { parts:[{ text:systemPrompt }] },
+    generationConfig: { responseMimeType:'application/json', temperature:0.5 }
+  };
+  let res;
+  try{
+    res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  }catch(networkErr){
+    throw new Error('네트워크 오류로 Gemini API에 연결하지 못했습니다. 인터넷 연결을 확인해주세요.');
+  }
+  if(!res.ok){
+    let detail='';
+    try{ const j=await res.json(); detail = j.error?.message || JSON.stringify(j).slice(0,300); }catch(e){ detail = await res.text().catch(()=>'').then(t=>t.slice(0,300)); }
+    throw new Error(`Gemini API 오류 (${res.status}): ${detail}`);
+  }
+  const data = await res.json();
+  if(data.promptFeedback && data.promptFeedback.blockReason){
+    throw new Error('요청이 안전 정책에 의해 차단되었습니다: ' + data.promptFeedback.blockReason);
+  }
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const text = parts.map(p=>p.text||'').join('');
+  if(!text.trim()) throw new Error('AI가 빈 응답을 반환했습니다. 다시 시도해보세요.');
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
+  try{
+    return JSON.parse(cleaned);
+  }catch(e){
+    throw new Error('AI 응답을 JSON으로 해석하지 못했습니다. 다시 시도하거나 요청을 더 구체적으로 적어보세요.');
+  }
+}
+
+/* ---------- Shared schema description for graph objects ---------- */
+const AI_GRAPH_SCHEMA_DESC = `
+그래프는 다음 JSON 형태로 표현한다 (필드는 전부 포함하되, 값이 없으면 아래 기본값을 사용):
+
+{
+  "title": string,            // 그래프 제목 (선택, 비워도 됨). "$...$"로 감싸면 그 부분만 수식으로 표시됨
+  "desc": string,              // 부제 (선택)
+  "coordType": "q1" | "q1_no" | "q14" | "all",
+     // q1: 1사분면(원점 포함, 기본) · q1_no: 1사분면(원점 표시 안함)
+     // q14: 1·4사분면(y축 음수 허용, 무역/소득 그래프 등) · all: 4사분면 모두
+  "xLabel": string, "yLabel": string,   // 축 이름. "$Q$"처럼 감싸면 수식으로 표시됨. 기본 "Q","P" 등 상황에 맞게
+  "xMin": number, "xMax": number, "yMin": number, "yMax": number,  // 기본 0,10,0,10. q14/all이면 yMin(또는 xMin)을 음수로(-5~-6 권장)
+  "tickStep": number,          // 눈금 간격, 보통 1~2
+  "showGrid": boolean, "showTicks": boolean, "showOrigin": boolean,  // 기본 모두 true
+  "lines": [ Line, ... ],
+  "points": [ Point, ... ],
+  "areas": [ Area, ... ]
+}
+
+Line 객체 — "type" 값에 따라 필요한 필드가 다르다. 공통 필드: name(범례에 뜨는 이름, 짧게, "$...$"로 수식 가능), eq(방정식 표시 문자열, 예: "P=10-Q", 선택), color(hex, 예 "#2563eb"), w(선 굵기, 보통 2), dashed(boolean, 점선 여부):
+  - {"type":"line","slope":number,"int":number, ...}        // 직선 y=slope*x+int. 수요/공급/예산선 등 대부분의 경우 이 타입 사용
+  - {"type":"2pt","x0":number,"y0":number,"x1":number,"y1":number, ...}  // 두 점을 정확히 잇는 선분(구간 한정, 예: 굴절수요곡선, 노동공급의 일부 구간)
+  - {"type":"vert","xv":number, ...}     // 수직선 (예: 수량 제한, 최저임금의 수량축 등)
+  - {"type":"horiz","yv":number, ...}    // 수평선 (예: 가격 상한/하한)
+  - {"type":"curve","int":number,"curv":number, ...}   // y = int^curv / x^curv 형태의 반비례 쌍곡선. 무차별곡선, 등량곡선, 생산가능곡선처럼 원점에 볼록한 곡선에 사용. int는 4~9 사이 권장, curv는 1(직각쌍곡선)~2 사이
+  - {"type":"fn","fnExpr":string,"fnA":number,"fnH":number,"fnK":number, ...}  // 임의 함수 y = fnA*f(x-fnH)+fnK. fnExpr은 x에 대한 식만 가능하며 +,-,*,/,^ 와 sqrt(),cbrt(),abs(),ln(),log(),sin(),cos(),exp(),pi,e 만 허용 (다른 함수명/문자 사용 불가)
+
+Point 객체: {"x":number,"y":number,"label":string(선택, "$...$"로 수식 가능, 예 "균형점 $E^*$"),"color":string(hex),"dropLines":boolean(기본 true, 축까지 점선 내림선 표시 여부)}
+
+Area 객체 (음영 영역, 잉여/후생손실 등): {"pts":[{"x":number,"y":number}, ...최소 3개], "color":string(hex), "hatch":boolean(빗금 여부), "label":string(선택)}
+
+값이 정확히 주어지지 않은 요청(예: "보조금이 있는 예산선")은 시각적으로 보기 좋고 경제학적으로 타당한 대표적인 숫자를 스스로 정해서 채운다(예: 절편 10, 8 등 0~10 범위의 깔끔한 정수 위주). 구체적 수치가 의미 없는 일반적인 개념(예: 대표적인 무차별곡선, 일반적인 생산함수 형태)은 curve 또는 fn 타입으로 보기 좋게 표현하고, name/eq에는 실제 숫자 대신 기호(U=xy, MRS 등)를 넣어도 된다.
+반드시 위 스키마와 동일한 키 이름을 사용하고, 이 설명에 없는 필드는 추가하지 않는다.`;
+
+/* ---------- Sanitizers: never trust AI JSON blindly ---------- */
+function aiNum(v, def){
+  const n = typeof v==='number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : def;
+}
+function aiBool(v, def){
+  return typeof v==='boolean' ? v : def;
+}
+function aiStr(v, def){
+  return typeof v==='string' ? v : (def!==undefined?def:'');
+}
+function aiSanitizeLine(l, idx){
+  l = l || {};
+  const type = ['line','2pt','vert','horiz','curve','fn'].includes(l.type) ? l.type : 'line';
+  const out = {
+    type,
+    name: aiStr(l.name,''),
+    eq: aiStr(l.eq,''),
+    color: /^#[0-9a-fA-F]{3,8}$/.test(l.color||'') ? l.color : COLORS[idx%COLORS.length],
+    w: aiNum(l.w,2),
+    dashed: aiBool(l.dashed,false)
+  };
+  if(type==='line'){ out.slope=aiNum(l.slope,-1); out.int=aiNum(l.int,10); }
+  else if(type==='2pt'){ out.x0=aiNum(l.x0,0); out.y0=aiNum(l.y0,10); out.x1=aiNum(l.x1,10); out.y1=aiNum(l.y1,0); }
+  else if(type==='vert'){ out.xv=aiNum(l.xv,5); }
+  else if(type==='horiz'){ out.yv=aiNum(l.yv,5); }
+  else if(type==='curve'){ out.int=aiNum(l.int,8); out.curv=aiNum(l.curv,1.5); }
+  else if(type==='fn'){
+    out.fnExpr = /^[0-9x+\-*/^().,\s]*(sqrt|cbrt|abs|ln|log|sin|cos|exp|pi|e|[0-9x+\-*/^().,\s])*$/i.test(l.fnExpr||'') ? (l.fnExpr||'1/x') : '1/x';
+    out.fnA=aiNum(l.fnA,1); out.fnH=aiNum(l.fnH,0); out.fnK=aiNum(l.fnK,0);
+  }
+  return out;
+}
+function aiSanitizePoint(p){
+  p = p || {};
+  return {
+    x: aiNum(p.x,0), y: aiNum(p.y,0),
+    label: aiStr(p.label,''),
+    color: /^#[0-9a-fA-F]{3,8}$/.test(p.color||'') ? p.color : '#374151',
+    dropLines: aiBool(p.dropLines,true)
+  };
+}
+function aiSanitizeArea(a){
+  a = a || {};
+  const pts = Array.isArray(a.pts) ? a.pts.filter(p=>p&&Number.isFinite(aiNum(p.x,NaN))&&Number.isFinite(aiNum(p.y,NaN))).map(p=>({x:aiNum(p.x,0),y:aiNum(p.y,0)})) : [];
+  if(pts.length<3) return null;
+  return {
+    pts,
+    color: /^#[0-9a-fA-F]{3,8}$/.test(a.color||'') ? a.color : '#3b82f6',
+    hatch: aiBool(a.hatch,false),
+    label: aiStr(a.label,'')
+  };
+}
+function aiSanitizeGraphObj(obj){
+  obj = obj || {};
+  const coordType = ['q1','q1_no','q14','all'].includes(obj.coordType) ? obj.coordType : 'q1';
+  const g = {
+    title: aiStr(obj.title,''),
+    desc: aiStr(obj.desc,''),
+    coordType,
+    xLabel: aiStr(obj.xLabel,'Q'),
+    yLabel: aiStr(obj.yLabel,'P'),
+    xMin: aiNum(obj.xMin, (coordType==='all'?-6:0)),
+    xMax: aiNum(obj.xMax, 10),
+    yMin: aiNum(obj.yMin, (coordType==='q14'||coordType==='all')?-5:0),
+    yMax: aiNum(obj.yMax, 10),
+    tickStep: aiNum(obj.tickStep, 2),
+    showGrid: aiBool(obj.showGrid,true),
+    showTicks: aiBool(obj.showTicks,true),
+    showOrigin: aiBool(obj.showOrigin,true),
+    canvasAuto: true,
+    legendScale: 1,
+    lines: Array.isArray(obj.lines) ? obj.lines.slice(0,12).map((l,i)=>aiSanitizeLine(l,i)) : [],
+    points: Array.isArray(obj.points) ? obj.points.slice(0,20).map(aiSanitizePoint) : [],
+    areas: Array.isArray(obj.areas) ? obj.areas.slice(0,10).map(aiSanitizeArea).filter(Boolean) : []
+  };
+  return g;
+}
+
+/* ---------- Graph tab: create / modify ---------- */
+let _aiGraphMode = 'new';
+function aiOpenGraphModal(){
+  const hasSelection = !!(GS.selectedId && GbyId(GS.selectedId));
+  _aiGraphMode = hasSelection ? 'modify' : 'new';
+  aiRenderGraphModal(hasSelection);
+}
+function aiRenderGraphModal(hasSelection){
+  aiShowModal(`<span class="ai-badge">AI</span> 그래프 만들기 / 수정하기`, `
+    <div class="ai-hint">원하는 그래프를 말로 설명하면 Gemini가 좌표·곡선·점 등을 알아서 채워 그려줍니다. 구체적인 숫자를 몰라도 괜찮아요 — 대표적이고 보기 좋은 값으로 채워줍니다.</div>
+    <div class="ai-mode-row">
+      <button class="ai-mode-btn ${_aiGraphMode==='new'?'on':''}" onclick="aiSetGraphMode('new')">🆕 새 그래프로 추가</button>
+      <button class="ai-mode-btn ${_aiGraphMode==='modify'?'on':''}" ${hasSelection?'':'disabled title="먼저 그래프를 선택하세요"'} onclick="aiSetGraphMode('modify')">✏️ 선택한 그래프 수정</button>
+    </div>
+    <div class="gx-pop-form">
+      <label>요청 내용</label>
+      <textarea id="ai-graph-input" rows="4" placeholder="예: 보조금과 효율임금이 있는 경우의 예산선을 그려줘 / 선 색을 초록색으로 바꿔줘"></textarea>
+    </div>
+    <div id="ai-error" class="ai-error" style="display:none"></div>
+    <div id="ai-status" class="ai-status"></div>
+    <div class="ai-actions">
+      <button class="gx-btn" onclick="aiCloseModal()">취소</button>
+      <button class="gx-btn primary" id="ai-submit-btn" data-label="생성" onclick="aiSubmitGraph()">생성</button>
+    </div>
+  `);
+}
+function aiSetGraphMode(m){ _aiGraphMode = m; aiRenderGraphModal(!!(GS.selectedId && GbyId(GS.selectedId))); }
+
+async function aiSubmitGraph(){
+  aiClearError();
+  const req = document.getElementById('ai-graph-input').value.trim();
+  if(!req){ aiShowError('요청 내용을 입력해주세요.'); return; }
+  aiSetBusy(true);
+  try{
+    const system = `너는 경제학/수학 그래프 생성 도우미다. 사용자의 요청을 바탕으로 그래프 하나를 JSON으로만 응답한다. 마크다운, 설명, 코드펜스 없이 순수 JSON 객체 하나만 출력한다.\n${AI_GRAPH_SCHEMA_DESC}`;
+    let userMsg;
+    if(_aiGraphMode==='modify'){
+      const g = GbyId(GS.selectedId);
+      const current = { title:g.title, desc:g.desc, coordType:g.coordType, xLabel:g.xLabel, yLabel:g.yLabel, xMin:g.xMin, xMax:g.xMax, yMin:g.yMin, yMax:g.yMax, tickStep:g.tickStep, showGrid:g.showGrid, showTicks:g.showTicks, showOrigin:g.showOrigin, lines:g.lines, points:g.points, areas:g.areas };
+      userMsg = `현재 그래프 JSON:\n${JSON.stringify(current)}\n\n사용자 수정 요청: ${req}\n\n위 그래프를 요청에 맞게 수정한 전체 JSON을 스키마와 동일한 형식으로 반환해라 (바뀌지 않는 필드도 모두 포함).`;
+    } else {
+      userMsg = `요청: ${req}\n\n위 요청에 맞는 그래프 하나를 JSON으로 만들어라.`;
+    }
+    const json = await aiCallGemini(system, userMsg);
+    const g = aiSanitizeGraphObj(json);
+    if(_aiGraphMode==='modify'){
+      const target = GbyId(GS.selectedId);
+      Object.assign(target, g);
+      target.id = GS.selectedId; // keep identity
+    } else {
+      g.id = 'g'+(GS.nextId++);
+      GS.graphs.push(g);
+      GS.selectedId = g.id;
+    }
+    renderAll(); renderCoordPanel(); renderRPanel(null);
+    aiCloseModal();
+    showToast('✨ AI가 그래프를 생성했습니다');
+  }catch(e){
+    if(e.message!=='__NO_KEY__') aiShowError(e.message||String(e));
+  }finally{
+    aiSetBusy(false);
+  }
+}
+
+/* ---------- Grid tab: fill a whole grid of blocks ---------- */
+function aiOpenGridModal(){
+  aiShowModal(`<span class="ai-badge">AI</span> 그리드 채우기`, `
+    <div class="ai-hint">상황을 설명하면 여러 그래프/수식 블록으로 이루어진 그리드를 한 번에 만들어줍니다. 예: "노동자 오인이 이루어지는 과정을 IS-LM과 노동시장 그래프 그리드로 나타내줘"</div>
+    <div class="gx-pop-form">
+      <label>요청 내용</label>
+      <textarea id="ai-grid-input" rows="4" placeholder="예: 관세 부과의 효과를 국내시장, 국제시장 그래프로 나타내줘"></textarea>
+    </div>
+    <div id="ai-error" class="ai-error" style="display:none"></div>
+    <div id="ai-status" class="ai-status"></div>
+    <div class="ai-actions">
+      <button class="gx-btn" onclick="aiCloseModal()">취소</button>
+      <button class="gx-btn primary" id="ai-submit-btn" data-label="생성" onclick="aiSubmitGrid()">생성</button>
+    </div>
+  `);
+}
+async function aiSubmitGrid(){
+  aiClearError();
+  const req = document.getElementById('ai-grid-input').value.trim();
+  if(!req){ aiShowError('요청 내용을 입력해주세요.'); return; }
+  aiSetBusy(true);
+  try{
+    const system = `너는 경제학/수학 개념을 여러 개의 그래프·수식 블록으로 구성된 그리드로 설명해주는 도우미다. 사용자의 요청을 분석해 몇 개의 블록이 필요한지 스스로 판단하고, 각 블록을 그래프 또는 수식으로 만들어라. 마크다운/설명 없이 순수 JSON 하나만 출력한다.\n\n출력 형식:\n{"name": string(그리드 제목), "cols": number(1~4 권장), "rows": number(0=자동), "blocks": [ {"type":"graph","data": <그래프 JSON>} | {"type":"formula","data": {"title":string, "tex":string, "lineNums":boolean, "alignMode":boolean, "comments":boolean}} , ... ]}\n\n그래프 JSON 스키마:\n${AI_GRAPH_SCHEMA_DESC}\n\n수식 블록의 "tex"는 KaTeX용 순수 LaTeX 코드이며 앞뒤에 $ 기호를 붙이지 않는다. 여러 줄이면 각 줄을 "\\\\\\\\"로 구분한다. alignMode를 true로 하면 각 줄에 정렬 기준 "&"를 넣을 수 있다.`;
+    const userMsg = `요청: ${req}\n\n이 상황을 잘 설명할 수 있는 블록들로 이루어진 그리드를 만들어라. 필요한 만큼 그래프/수식 블록을 자유롭게 구성해라 (보통 2~4개).`;
+    const json = await aiCallGemini(system, userMsg);
+    const blocks = Array.isArray(json.blocks) ? json.blocks : [];
+    if(!blocks.length) throw new Error('AI가 블록을 생성하지 못했습니다. 요청을 조금 더 구체적으로 적어보세요.');
+    const newBlocks = blocks.slice(0,10).map(b=>{
+      if(b && b.type==='formula'){
+        const d = b.data||{};
+        return { bid:'b'+(_gxNextBlockId++), type:'formula', data:{ title:aiStr(d.title,''), tex:aiStr(d.tex,''), lineNums:aiBool(d.lineNums,false), alignMode:aiBool(d.alignMode,false), comments:aiBool(d.comments,false) } };
+      }
+      const g = aiSanitizeGraphObj((b&&b.data)||{});
+      return { bid:'b'+(_gxNextBlockId++), type:'graph', data:g };
+    });
+    if(!GX.blocks.length){
+      GX.name = aiStr(json.name, GX.name);
+      GX.cols = aiNum(json.cols, GX.cols) || GX.cols;
+      GX.rows = aiNum(json.rows, GX.rows);
+    }
+    GX.blocks = GX.blocks.concat(newBlocks);
+    switchMode('editor'); switchTab('grid-ed');
+    gxRender();
+    aiCloseModal();
+    showToast(`✨ AI가 블록 ${newBlocks.length}개를 추가했습니다`);
+  }catch(e){
+    if(e.message!=='__NO_KEY__') aiShowError(e.message||String(e));
+  }finally{
+    aiSetBusy(false);
+  }
+}
+
+/* ---------- Formula tab: fetch a representative formula ---------- */
+function aiOpenFormulaModal(){
+  aiShowModal(`<span class="ai-badge">AI</span> 수식 가져오기`, `
+    <div class="ai-hint">찾기 번거로운 대표적인 수식을 이름만 말하면 TeX으로 만들어 편집기에 바로 채워줍니다. 예: "콥더글라스 생산함수", "IS곡선 대표식", "베르누이 효용함수"</div>
+    <div class="gx-pop-form">
+      <label>요청 내용</label>
+      <input type="text" id="ai-formula-input" placeholder="예: 콥더글라스 생산함수">
+    </div>
+    <div id="ai-error" class="ai-error" style="display:none"></div>
+    <div id="ai-status" class="ai-status"></div>
+    <div class="ai-actions">
+      <button class="gx-btn" onclick="aiCloseModal()">취소</button>
+      <button class="gx-btn primary" id="ai-submit-btn" data-label="가져오기" onclick="aiSubmitFormula()">가져오기</button>
+    </div>
+  `);
+}
+async function aiSubmitFormula(){
+  aiClearError();
+  const req = document.getElementById('ai-formula-input').value.trim();
+  if(!req){ aiShowError('요청 내용을 입력해주세요.'); return; }
+  aiSetBusy(true);
+  try{
+    const system = `너는 수학/경제학 대표 수식을 정확한 LaTeX으로 제공하는 도우미다. 마크다운/설명 없이 순수 JSON 하나만 출력한다.\n출력 형식: {"title": string(수식 이름), "tex": string(순수 LaTeX 코드, 앞뒤에 $ 기호 없음. 여러 줄이면 각 줄 끝에 "\\\\\\\\" 로 구분), "lineNums": boolean, "alignMode": boolean(정렬이 필요하면 true, 이 경우 각 줄에 정렬 기준 "&" 포함), "comments": boolean}\n일반적으로 통용되는 표준 표기를 사용하고, 필요하면 여러 줄로 유도과정을 보여줘도 좋다.`;
+    const userMsg = `요청: ${req}`;
+    const json = await aiCallGemini(system, userMsg);
+    aiLoadFormulaDataIntoEditor({
+      title: aiStr(json.title, req),
+      tex: aiStr(json.tex,''),
+      lineNums: aiBool(json.lineNums,false),
+      alignMode: aiBool(json.alignMode,false),
+      comments: aiBool(json.comments,false)
+    });
+    aiCloseModal();
+    showToast('✨ AI가 수식을 불러왔습니다 — 확인 후 저장하세요');
+  }catch(e){
+    if(e.message!=='__NO_KEY__') aiShowError(e.message||String(e));
+  }finally{
+    aiSetBusy(false);
+  }
+}
+function aiLoadFormulaDataIntoEditor(data){
+  S.editingId = null;
+  ta().value = data.tex||'';
+  document.getElementById('ftitle').value = data.title||'';
+  S.lineNums = !!data.lineNums;
+  S.alignMode = !!data.alignMode;
+  S.leftAlign = false;
+  S.comments = !!data.comments;
+  document.getElementById('btn-lnum').classList.toggle('on', S.lineNums);
+  document.getElementById('btn-align').classList.toggle('on', S.alignMode);
+  document.getElementById('btn-leftalign').classList.toggle('on', S.leftAlign);
+  document.getElementById('btn-comments').classList.toggle('on', S.comments);
+  updateExportRestriction();
+  updateEditingIndicator();
+  updatePreview();
+  switchMode('editor'); switchTab('ed');
+}
 
 </script>
 </body>
