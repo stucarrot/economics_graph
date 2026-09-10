@@ -6785,9 +6785,16 @@ loadGridLibraryStore();
 function aiGetSettings(){
   try{
     const raw = localStorage.getItem('merged_ai_settings');
-    if(raw) return JSON.parse(raw);
+    if(raw){
+      const s = JSON.parse(raw);
+      // migrate old single-key format
+      if(!Array.isArray(s.apiKeys)){
+        s.apiKeys = s.apiKey ? [s.apiKey] : [];
+      }
+      return s;
+    }
   }catch(e){}
-  return { apiKey:'', model:'gemini-2.5-flash' };
+  return { apiKeys:[], model:'gemini-2.5-flash' };
 }
 function aiSaveSettingsObj(s){
   try{ localStorage.setItem('merged_ai_settings', JSON.stringify(s)); }catch(e){}
@@ -6798,11 +6805,12 @@ function aiOpenSettingsModal(){
   aiShowModal('⚙ AI 설정 (Google AI Studio)', `
     <div class="ai-hint">
       <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#7c3aed">Google AI Studio</a>에서 무료로 API 키를 발급받아 붙여넣으세요.
-      키는 이 브라우저에만(localStorage) 저장되며 외부로 전송되지 않습니다 — 실제 요청은 사용자의 브라우저에서 Google 서버로 직접 전송됩니다.
+      키는 이 브라우저에만(localStorage) 저장되며 외부로 전송되지 않습니다 — 실제 요청은 사용자의 브라우저에서 Google 서버로 직접 전송됩니다.<br>
+      <b>여러 개를 줄바꿈으로 구분해서 넣으면</b>, 위에서부터 순서대로 시도하다가 특정 키가 실패(한도 초과·오류 등)하면 자동으로 다음 키로 넘어갑니다.
     </div>
     <div class="gx-pop-form">
-      <label>API 키</label>
-      <input type="password" id="ai-set-key" value="${esc(s.apiKey||'')}" placeholder="AIza...">
+      <label>API 키 (한 줄에 하나씩)</label>
+      <textarea id="ai-set-key" rows="4" placeholder="AIza...&#10;AIza... (두 번째 키, 선택)&#10;AIza... (세 번째 키, 선택)" style="font-family:var(--mono)">${esc((s.apiKeys||[]).join('\n'))}</textarea>
       <label>모델</label>
       <select id="ai-set-model">
         ${['gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash'].map(m=>`<option value="${m}"${s.model===m?' selected':''}>${m}</option>`).join('')}
@@ -6821,16 +6829,16 @@ function aiOpenSettingsModal(){
   });
 }
 function aiSaveSettingsFromModal(){
-  const key = document.getElementById('ai-set-key').value.trim();
+  const keys = document.getElementById('ai-set-key').value.split('\n').map(k=>k.trim()).filter(Boolean);
   const sel = document.getElementById('ai-set-model').value;
   const model = sel==='__custom__' ? (document.getElementById('ai-set-model-custom').value.trim()||'gemini-2.5-flash') : sel;
-  aiSaveSettingsObj({ apiKey:key, model });
+  aiSaveSettingsObj({ apiKeys:keys, model });
   aiCloseModal();
-  showToast('AI 설정이 저장되었습니다');
+  showToast(keys.length>1 ? `AI 설정이 저장되었습니다 (키 ${keys.length}개 등록)` : 'AI 설정이 저장되었습니다');
 }
 function aiRequireKey(){
   const s = aiGetSettings();
-  if(!s.apiKey){
+  if(!s.apiKeys || !s.apiKeys.length){
     showToast('먼저 ⚙ AI 설정에서 API 키를 입력해주세요');
     aiOpenSettingsModal();
     return null;
@@ -6865,12 +6873,12 @@ function aiClearError(){
   if(el){ el.style.display='none'; el.textContent=''; }
 }
 
-/* ---------- Core Gemini call ---------- */
-async function aiCallGemini(systemPrompt, userPrompt){
-  const settings = aiRequireKey();
-  if(!settings) throw new Error('__NO_KEY__');
-  const model = settings.model || 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(settings.apiKey)}`;
+/* ---------- Core Gemini call ----------
+   Tries each stored API key in order; if a key fails (HTTP error —
+   invalid key, quota exceeded, rate limited, etc.) it automatically
+   moves on to the next key. Only throws once every key has failed. */
+async function aiCallGeminiWithKey(apiKey, model, systemPrompt, userPrompt){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const body = {
     contents: [{ role:'user', parts:[{ text:userPrompt }] }],
     systemInstruction: { parts:[{ text:systemPrompt }] },
@@ -6885,21 +6893,57 @@ async function aiCallGemini(systemPrompt, userPrompt){
   if(!res.ok){
     let detail='';
     try{ const j=await res.json(); detail = j.error?.message || JSON.stringify(j).slice(0,300); }catch(e){ detail = await res.text().catch(()=>'').then(t=>t.slice(0,300)); }
-    throw new Error(`Gemini API 오류 (${res.status}): ${detail}`);
+    const err = new Error(`Gemini API 오류 (${res.status}): ${detail}`);
+    err.httpStatus = res.status;
+    throw err;
   }
   const data = await res.json();
   if(data.promptFeedback && data.promptFeedback.blockReason){
-    throw new Error('요청이 안전 정책에 의해 차단되었습니다: ' + data.promptFeedback.blockReason);
+    // Not a key problem — don't retry with another key, surface immediately.
+    const err = new Error('요청이 안전 정책에 의해 차단되었습니다: ' + data.promptFeedback.blockReason);
+    err.noRetry = true;
+    throw err;
   }
   const parts = data.candidates?.[0]?.content?.parts || [];
   const text = parts.map(p=>p.text||'').join('');
-  if(!text.trim()) throw new Error('AI가 빈 응답을 반환했습니다. 다시 시도해보세요.');
+  if(!text.trim()){
+    const err = new Error('AI가 빈 응답을 반환했습니다. 다시 시도해보세요.');
+    err.noRetry = true;
+    throw err;
+  }
   let cleaned = text.trim();
   cleaned = cleaned.replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
   try{
     return JSON.parse(cleaned);
   }catch(e){
-    throw new Error('AI 응답을 JSON으로 해석하지 못했습니다. 다시 시도하거나 요청을 더 구체적으로 적어보세요.');
+    const err = new Error('AI 응답을 JSON으로 해석하지 못했습니다. 다시 시도하거나 요청을 더 구체적으로 적어보세요.');
+    err.noRetry = true;
+    throw err;
+  }
+}
+
+/* Tries each saved API key in order (top to bottom). If a key fails with
+   an HTTP error (invalid key, quota exceeded, rate limited, disabled,
+   etc.) it moves on to the next key automatically. Errors that clearly
+   aren't about the key (blocked content, unparseable response) are not
+   worth retrying with another key, so those surface immediately. */
+async function aiCallGemini(systemPrompt, userPrompt){
+  const settings = aiRequireKey();
+  if(!settings) throw new Error('__NO_KEY__');
+  const model = settings.model || 'gemini-2.5-flash';
+  const keys = settings.apiKeys;
+  const errors = [];
+  for(let i=0;i<keys.length;i++){
+    try{
+      return await aiCallGeminiWithKey(keys[i], model, systemPrompt, userPrompt);
+    }catch(e){
+      if(e.noRetry) throw e; // not a key-specific problem — retrying with another key won't help
+      errors.push(`키 ${i+1}: ${e.message}`);
+      if(i===keys.length-1){
+        throw new Error(keys.length>1 ? `모든 API 키가 실패했습니다.\n`+errors.join('\n') : errors[0]);
+      }
+      // this key failed (invalid/quota/rate-limited/etc.) — automatically try the next one
+    }
   }
 }
 
