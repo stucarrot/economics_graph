@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TeX 수식 편집기</title>
+<title>ECON 편집기</title>
+<link rel="icon" type="image/x-icon" href="./favicon.ico">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -6994,7 +6995,7 @@ const AI_GRAPH_SCHEMA_DESC = `
 
 {
   "title": string,            // 그래프 제목 (선택, 비워도 됨). "$...$"로 감싸면 그 부분만 수식으로 표시됨
-  "desc": string,              // 부제 (선택)
+  "desc": string,              // 부제(설명, 선택). 요청 내용이 하나의 변화가 다른 변수에 연쇄적으로 영향을 미치는 상황(정책 변화, 충격, 이동 등)이라면, desc에 그 인과관계를 화살표(→)로 짧게 이어서 표현한다. 예: "R₀ → R₁ (금리 인하) → 자본유출 → E↑ (환율 상승)". 단순히 곡선 하나를 보여주는 경우처럼 인과 흐름이 딱히 없으면 평범한 한 줄 설명으로 써도 된다.
   "coordType": "q1" | "q1_no" | "q14" | "all",
      // q1: 1사분면(원점 포함, 기본) · q1_no: 1사분면(원점 표시 안함)
      // q14: 1·4사분면(y축 음수 허용, 무역/소득 그래프 등) · all: 4사분면 모두
@@ -7134,14 +7135,14 @@ function aiOpenGraphModal(){
 }
 function aiRenderGraphModal(hasSelection){
   aiShowModal(`<span class="ai-badge">AI</span> 그래프 만들기 / 수정하기`, `
-    <div class="ai-hint">원하는 그래프를 말로 설명하면 Gemini가 좌표·곡선·점 등을 알아서 채워 그려줍니다. 구체적인 숫자를 몰라도 괜찮아요 — 대표적이고 보기 좋은 값으로 채워줍니다.</div>
+    <div class="ai-hint">원하는 그래프를 말로 설명하면 Gemini가 좌표·곡선·점 등을 알아서 채워 그려줍니다. 구체적인 숫자를 몰라도 괜찮아요 — 대표적이고 보기 좋은 값으로 채워줍니다. 관련된 그래프 여러 개(예: "국내시장과 국제시장 그래프 두 개로")를 요청하면 이 편집기의 그래프 그리드에 한 번에 여러 개를 추가해줍니다 — 여러 그래프 조합은 별도 "그리드" 탭이 아니라 여기서도 만들 수 있어요.</div>
     <div class="ai-mode-row">
       <button class="ai-mode-btn ${_aiGraphMode==='new'?'on':''}" onclick="aiSetGraphMode('new')">🆕 새 그래프로 추가</button>
       <button class="ai-mode-btn ${_aiGraphMode==='modify'?'on':''}" ${hasSelection?'':'disabled title="먼저 그래프를 선택하세요"'} onclick="aiSetGraphMode('modify')">✏️ 선택한 그래프 수정</button>
     </div>
     <div class="gx-pop-form">
       <label>요청 내용</label>
-      <textarea id="ai-graph-input" rows="4" placeholder="예: 보조금과 효율임금이 있는 경우의 예산선을 그려줘 / 선 색을 초록색으로 바꿔줘"></textarea>
+      <textarea id="ai-graph-input" rows="4" placeholder="예: 관세 부과의 효과를 국내시장, 국제시장 그래프 두 개로 그려줘 / 선 색을 초록색으로 바꿔줘"></textarea>
     </div>
     <div id="ai-error" class="ai-error" style="display:none"></div>
     <div id="ai-status" class="ai-status"></div>
@@ -7159,22 +7160,33 @@ async function aiSubmitGraph(){
   if(!req){ aiShowError('요청 내용을 입력해주세요.'); return; }
   aiSetBusy(true);
   try{
-    const system = `너는 경제학/수학 그래프 생성 도우미다. 사용자의 요청을 바탕으로 그래프 하나를 JSON으로만 응답한다. 마크다운, 설명, 코드펜스 없이 순수 JSON 객체 하나만 출력한다.\n${AI_GRAPH_SCHEMA_DESC}`;
-    let userMsg;
+    let system, userMsg;
     if(_aiGraphMode==='modify'){
+      system = `너는 경제학/수학 그래프 생성 도우미다. 사용자의 요청을 바탕으로 그래프 하나를 JSON으로만 응답한다. 마크다운, 설명, 코드펜스 없이 순수 JSON 객체 하나만 출력한다.\n${AI_GRAPH_SCHEMA_DESC}`;
       const g = GbyId(GS.selectedId);
       const current = { title:g.title, desc:g.desc, coordType:g.coordType, xLabel:g.xLabel, yLabel:g.yLabel, xMin:g.xMin, xMax:g.xMax, yMin:g.yMin, yMax:g.yMax, tickStep:g.tickStep, showGrid:g.showGrid, showTicks:g.showTicks, showOrigin:g.showOrigin, lines:g.lines, points:g.points, areas:g.areas };
       userMsg = `현재 그래프 JSON:\n${JSON.stringify(current)}\n\n사용자 수정 요청: ${req}\n\n위 그래프를 요청에 맞게 수정한 전체 JSON을 스키마와 동일한 형식으로 반환해라 (바뀌지 않는 필드도 모두 포함).`;
     } else {
-      userMsg = `요청: ${req}\n\n위 요청에 맞는 그래프 하나를 JSON으로 만들어라.`;
+      system = `너는 경제학/수학 그래프 생성 도우미다. 사용자의 요청을 바탕으로 그래프를 JSON으로만 응답한다. 마크다운, 설명, 코드펜스 없이 순수 JSON만 출력한다.\n${AI_GRAPH_SCHEMA_DESC}\n\n출력 형식은 두 가지 중 하나를 스스로 판단해서 고른다:\n- 그래프 하나로 충분한 요청이면: 그래프 JSON 객체 하나만 그대로 반환한다.\n- 요청이 서로 관련된 여러 개의 그래프를 필요로 하면(예: "국내시장과 국제시장 두 그래프로", "IS-LM과 노동시장 그래프로"): {"graphs": [그래프JSON, 그래프JSON, ...]} 형태로 배열에 담아 반환한다. 각 그래프는 위 스키마를 그대로 따른다.\n요청 문장에 "그래프 여러 개", "~와 ~ 그래프로", "그리드로" 같은 표현이 있으면 대체로 배열 형태가 맞다.`;
+      userMsg = `요청: ${req}\n\n위 요청에 맞는 그래프를 만들어라.`;
     }
     const json = await aiCallGemini(system, userMsg);
-    const g = aiSanitizeGraphObj(json);
     if(_aiGraphMode==='modify'){
+      const g = aiSanitizeGraphObj(json);
       const target = GbyId(GS.selectedId);
       Object.assign(target, g);
       target.id = GS.selectedId; // keep identity
+      GS.selectedId = target.id;
+    } else if(Array.isArray(json.graphs) && json.graphs.length){
+      const newGraphs = json.graphs.slice(0,8).map(gj=>{
+        const g = aiSanitizeGraphObj(gj);
+        g.id = 'g'+(GS.nextId++);
+        return g;
+      });
+      GS.graphs.push(...newGraphs);
+      GS.selectedId = newGraphs[newGraphs.length-1].id;
     } else {
+      const g = aiSanitizeGraphObj(json);
       g.id = 'g'+(GS.nextId++);
       GS.graphs.push(g);
       GS.selectedId = g.id;
