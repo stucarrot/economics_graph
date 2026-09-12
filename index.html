@@ -29,6 +29,7 @@
   --pv:      #101012;
   --sw:      258px;
   --th:      50px;
+  --sh:      42px;
   --bh:      54px;
   --mono:    'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   --sans:    'Inter', -apple-system, sans-serif;
@@ -86,34 +87,71 @@ input,textarea { font-family:var(--sans); }
 ::-webkit-scrollbar-thumb:hover { background:var(--tm); }
 
 /* ══════════════════════════════════════
-   TOP BAR
+   TOP BAR  (row 1: brand + category nav + utilities)
+   SUB BAR  (row 2: editor/library mode toggle + hint)
 ══════════════════════════════════════ */
 #topbar {
   position:fixed; top:0; left:0; right:0; height:var(--th);
   background:var(--sf1); border-bottom:1px solid var(--bd);
-  display:flex; align-items:center; padding:0 14px; gap:14px; z-index:100;
+  display:flex; align-items:center; padding:0 14px; gap:10px; z-index:100;
+  min-width:0;
 }
 .brand {
   display:flex; align-items:center; gap:7px;
   font-size:14px; font-weight:600; color:var(--tb); white-space:nowrap; flex-shrink:0;
 }
 .brand-sym { color:var(--ac); font-size:18px; font-weight:400; }
-.tab-strip {
+
+/* Primary nav: 수식 / 그래프 / 표 / 그리드 */
+.cat-strip {
   display:flex; gap:3px; background:var(--bg);
-  border-radius:8px; padding:3px; overflow-x:auto; max-width:52vw;
-  scrollbar-width:none;
+  border-radius:9px; padding:3px; overflow-x:auto;
+  scrollbar-width:none; min-width:0; flex-shrink:1;
 }
-.tab-strip::-webkit-scrollbar { display:none; }
-.tab-btn {
-  padding:5px 13px; border:none; border-radius:6px;
-  background:transparent; color:var(--tm); font-size:13px; font-weight:500;
-  transition:all .15s; white-space:nowrap; flex-shrink:0;
+.cat-strip::-webkit-scrollbar { display:none; }
+.nav-cat-btn {
+  display:flex; align-items:center; gap:6px;
+  padding:6px 14px; border:none; border-radius:7px;
+  background:transparent; color:var(--tm); font-size:13px; font-weight:600;
+  transition:all .15s; white-space:nowrap; flex-shrink:0; font-family:var(--sans);
 }
-.tab-btn.on { background:var(--sf2); color:var(--tb); }
-.tab-btn:hover:not(.on) { color:var(--tx); }
-.topbar-spacer { flex:1; }
-.topbar-hint { font-size:11px; color:var(--tm); white-space:nowrap; display:flex; gap:8px; align-items:center; }
+.nav-cat-btn.on { background:var(--sf2); color:var(--tb); }
+.nav-cat-btn:hover:not(.on) { color:var(--tx); }
+.cat-ico { font-size:13px; line-height:1; }
+
+.topbar-spacer { flex:1; min-width:6px; }
+
+/* Sub bar (row 2): 편집기 / 라이브러리 toggle */
+#subbar {
+  position:fixed; top:var(--th); left:0; right:0; height:var(--sh);
+  background:var(--sf1); border-bottom:1px solid var(--bd0);
+  display:flex; align-items:center; padding:0 14px; gap:14px; z-index:99;
+  min-width:0;
+}
+.mode-toggle { display:flex; gap:2px; background:var(--sf2); border-radius:8px; padding:2px; flex-shrink:0; }
+.mode-btn { padding:6px 14px; border:none; border-radius:6px; background:transparent; color:var(--tm); font-size:12.5px; font-weight:600; cursor:pointer; font-family:var(--sans); white-space:nowrap; }
+.mode-btn.on { background:var(--sf3); color:var(--tb); }
+.mode-btn:hover:not(.on) { color:var(--tx); }
+
+.topbar-hint { font-size:11px; color:var(--tm); white-space:nowrap; display:flex; gap:8px; align-items:center; overflow:hidden; }
 .kbd { display:inline-block; padding:1px 5px; border:1px solid var(--bd); border-radius:3px; font-size:10px; color:var(--tm); background:var(--sf2); font-family:var(--mono); }
+
+/* Responsive: shrink/collapse labels before anything overlaps */
+@media (max-width:980px) {
+  .topbar-hint { display:none; }
+}
+@media (max-width:760px) {
+  .ai-settings-label { display:none; }
+  #ai-settings-btn { padding:6px 9px; }
+}
+@media (max-width:600px) {
+  .brand-text { display:none; }
+  .cat-label { display:none; }
+  .nav-cat-btn { padding:8px 10px; }
+  .cat-ico { font-size:15px; }
+  #topbar { gap:6px; padding:0 10px; }
+  #subbar { padding:0 10px; }
+}
 
 /* Theme toggle button */
 #theme-toggle {
@@ -163,7 +201,7 @@ input,textarea { font-family:var(--sans); }
 /* ══════════════════════════════════════
    MAIN BODY
 ══════════════════════════════════════ */
-#app-body { position:fixed; top:var(--th); left:0; right:0; bottom:0; overflow:hidden; }
+#app-body { position:fixed; top:calc(var(--th) + var(--sh)); left:0; right:0; bottom:0; overflow:hidden; }
 .tab-pane { display:none; height:100%; }
 .tab-pane.on { display:flex; }
 
@@ -716,9 +754,8 @@ input,textarea { font-family:var(--sans); }
 
 
 @media (max-width:767px) {
-  :root { --th:48px; --bh:54px; }
+  :root { --th:48px; --sh:40px; --bh:54px; }
   #sb-left,#sb-right { display:none !important; }
-  .topbar-hint { display:none; }
   #tab-ed { flex-direction:column !important; }
   #ed-center { padding-bottom:var(--bh); }
   #preview-wrap { min-height:80px; max-height:170px; }
@@ -811,15 +848,6 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
   .tb-btn {padding:7px 12px}#graph-app-root .rp-item {padding:8px}#graph-app-root .cbtn {padding:5px 9px;font-size:11px}#graph-app-root .card-top-btns {opacity:1}
 }
 
-
-/* ══════════════════════════════════════
-   MERGED APP SHELL — mode switch (편집기/라이브러리)
-══════════════════════════════════════ */
-.mode-switch { display:flex; gap:2px; background:var(--sf2); border-radius:8px; padding:2px; margin-right:10px; }
-.mode-btn { padding:6px 14px; border:none; border-radius:6px; background:transparent; color:var(--tm); font-size:12.5px; font-weight:600; cursor:pointer; font-family:var(--sans); }
-.mode-btn.on { background:var(--sf3); color:var(--tb); }
-.mode-btn:hover:not(.on) { color:var(--tx); }
-.tab-strip-sub { display:flex; gap:2px; }
 
 /* ══════════════════════════════════════
    GRID EDITOR (그리드 편집기) — new tab, own namespace .gx-*
@@ -920,35 +948,31 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
 
 <!-- ━━━━━━━━━━━━━━━ TOP BAR ━━━━━━━━━━━━━━━ -->
 <header id="topbar">
-  <div class="brand"><span class="brand-sym">∫</span> 통합 편집기</div>
-  <div class="mode-switch">
-    <button class="mode-btn on" id="mode-btn-editor" onclick="switchMode('editor')">편집기</button>
-    <button class="mode-btn" id="mode-btn-library" onclick="switchMode('library')">라이브러리</button>
-  </div>
-  <div class="tab-strip">
-    <div class="tab-strip-sub" id="editor-subtabs">
-      <button class="tab-btn on" onclick="switchTab('ed')">수식</button>
-      <button class="tab-btn" onclick="switchTab('graph-ed')">그래프</button>
-      <button class="tab-btn" onclick="switchTab('table-ed')">표</button>
-      <button class="tab-btn" onclick="switchTab('grid-ed')">그리드</button>
-    </div>
-    <div class="tab-strip-sub" id="library-subtabs" style="display:none">
-      <button class="tab-btn" onclick="switchTab('lib')">수식</button>
-      <button class="tab-btn" onclick="switchTab('graph-lib')">그래프</button>
-      <button class="tab-btn" onclick="switchTab('table-lib')">표</button>
-      <button class="tab-btn" onclick="switchTab('grid-lib')">그리드</button>
-    </div>
+  <div class="brand"><span class="brand-sym">∫</span><span class="brand-text"> 통합 편집기</span></div>
+  <nav class="cat-strip" id="cat-strip">
+    <button class="nav-cat-btn on" data-cat="formula" onclick="navSetCategory('formula')" title="수식"><span class="cat-ico">∑</span><span class="cat-label">수식</span></button>
+    <button class="nav-cat-btn" data-cat="graph" onclick="navSetCategory('graph')" title="그래프"><span class="cat-ico">📈</span><span class="cat-label">그래프</span></button>
+    <button class="nav-cat-btn" data-cat="table" onclick="navSetCategory('table')" title="표"><span class="cat-ico">▦</span><span class="cat-label">표</span></button>
+    <button class="nav-cat-btn" data-cat="grid" onclick="navSetCategory('grid')" title="그리드"><span class="cat-ico">▥</span><span class="cat-label">그리드</span></button>
+  </nav>
+  <div class="topbar-spacer"></div>
+  <button id="ai-settings-btn" onclick="aiOpenSettingsModal()" title="Google AI Studio(Gemini) API 키 설정 — AI로 그래프/그리드/수식 만들기에 사용됩니다" style="border:1px solid var(--bd0);border-radius:8px;background:var(--sf2);color:var(--tx);font-size:11px;padding:6px 10px;cursor:pointer;margin-right:6px;font-family:var(--sans)">⚙<span class="ai-settings-label"> AI 설정</span></button>
+  <button id="theme-toggle" onclick="toggleTheme()" title="라이트/다크 모드 전환">🌙</button>
+</header>
+
+<div id="subbar">
+  <div class="mode-toggle" id="mode-toggle">
+    <button class="mode-btn on" data-mode="editor" onclick="navSetMode('editor')">편집기</button>
+    <button class="mode-btn" data-mode="library" onclick="navSetMode('library')">라이브러리</button>
   </div>
   <div class="topbar-spacer"></div>
-  <button id="ai-settings-btn" onclick="aiOpenSettingsModal()" title="Google AI Studio(Gemini) API 키 설정 — AI로 그래프/그리드/수식 만들기에 사용됩니다" style="border:1px solid var(--bd0);border-radius:8px;background:var(--sf2);color:var(--tx);font-size:11px;padding:6px 10px;cursor:pointer;margin-right:6px;font-family:var(--sans)">⚙ AI 설정</button>
-  <button id="theme-toggle" onclick="toggleTheme()" title="라이트/다크 모드 전환">🌙</button>
-  <div class="topbar-hint">
+  <div class="topbar-hint" id="topbar-hint">
     <span><span class="kbd">@a</span> α</span>
     <span><span class="kbd">fr</span>+<span class="kbd">Tab</span> 분수</span>
     <span><span class="kbd">-></span>+<span class="kbd">Space</span> →</span>
     <span><span class="kbd">Ctrl+S</span> 저장</span>
   </div>
-</header>
+</div>
 
 <div id="app-body">
 
@@ -1295,12 +1319,14 @@ label {font-size:11px;color:#555;display:block;margin-bottom:2px}#graph-app-root
       <button class="tb-btn prominent" id="btn-table-header" onclick="toggleTableHeader()" title="첫 번째 행을 헤더로 표시">📌 헤더 행</button>
       <button class="tb-btn prominent" id="btn-merge-mode" onclick="toggleMergeMode()" title="셀을 클릭해서 오른쪽 셀과 병합 — 마크다운으로는 표현이 안 돼서 마크다운 내보내기가 비활성화됩니다 (TeX·이미지는 그대로 가능)">⛓ 셀 병합 모드</button>
       <div class="tb-sep"></div>
+      <button class="tb-btn" id="btn-table-preview" onclick="toggleTablePreview()" title="입력한 표가 어떻게 보이는지 미리보기를 열고 닫습니다">👁 미리보기</button>
+      <div class="tb-sep"></div>
       <button class="tb-btn danger" onclick="clearTableEditor()" title="표 전체 지우기">✕ 지우기</button>
     </div>
     <div id="table-merge-hint" style="display:none">⛓ 병합 모드 — 합칠 <b>오른쪽</b> 셀을 클릭하세요. 이미 병합된 셀을 클릭하면 분할됩니다.</div>
 
-    <!-- Live preview -->
-    <div id="table-preview-wrap">
+    <!-- Live preview (toggled — off by default so the editing grid gets the room it needs) -->
+    <div id="table-preview-wrap" class="hidden">
       <div id="table-preview-lbl">미리보기</div>
       <div id="table-preview-out"></div>
     </div>
@@ -3400,6 +3426,17 @@ function renderTablePreview() {
   out.innerHTML = buildTableHTML(T.cells, T.aligns, T.hasHeader, T.rows, T.cols);
 }
 
+/* ── Preview toggle (collapsed by default — the preview area is inherently
+   wide, so it stays out of the way until asked for instead of always
+   competing with the editing grid for vertical space) ── */
+function toggleTablePreview() {
+  const wrap = document.getElementById('table-preview-wrap');
+  const btn = document.getElementById('btn-table-preview');
+  const isOpen = wrap.classList.toggle('hidden') === false; // toggle returns true if class now present
+  btn.classList.toggle('on', isOpen);
+  if (isOpen) renderTablePreview();
+}
+
 /* ── Export: TeX ── */
 function texEscapeSegment(text) {
   return text.replace(/([\\%$&#_{}~^])/g, (m, ch) => {
@@ -3744,13 +3781,39 @@ function ppDeleteTable() {
 }
 
 /* ════════════════════════════════════════════
-   TAB SWITCHING
+   NAVIGATION
+   Two-tier top nav: 1차 = 카테고리(수식/그래프/표/그리드),
+   2차 = 모드(편집기/라이브러리). Each (category,mode) pair
+   maps to one of the 8 existing tab-panes.
 ════════════════════════════════════════════ */
+const TAB_MAP = {
+  formula: { editor:'ed',       library:'lib' },
+  graph:   { editor:'graph-ed', library:'graph-lib' },
+  table:   { editor:'table-ed', library:'table-lib' },
+  grid:    { editor:'grid-ed',  library:'grid-lib' }
+};
+const TAB_NAV_LOOKUP = {};
+Object.keys(TAB_MAP).forEach(cat => {
+  Object.keys(TAB_MAP[cat]).forEach(mode => {
+    TAB_NAV_LOOKUP[TAB_MAP[cat][mode]] = { cat, mode };
+  });
+});
+const NAV = { category:'formula', mode:'editor' };
+
 function switchTab(name) {
   document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('on'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('on'));
-  document.getElementById('tab-'+name).classList.add('on');
-  document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('on');
+  const pane = document.getElementById('tab-'+name);
+  if (pane) pane.classList.add('on');
+
+  const info = TAB_NAV_LOOKUP[name];
+  if (info) {
+    NAV.category = info.cat; NAV.mode = info.mode;
+    document.querySelectorAll('.nav-cat-btn').forEach(b => b.classList.toggle('on', b.dataset.cat===info.cat));
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('on', b.dataset.mode===info.mode));
+    const hint = document.getElementById('topbar-hint');
+    if (hint) hint.style.display = (info.cat==='formula' && info.mode==='editor') ? '' : 'none';
+  }
+
   if (name==='lib') renderLib();
   if (name==='table-lib') renderTableLib();
   if (name==='graph-lib') renderGraphLibraryTab();
@@ -3758,13 +3821,14 @@ function switchTab(name) {
   if (name==='grid-lib') { if(typeof renderGridLibTab==='function') renderGridLibTab(); }
 }
 
-function switchMode(mode) {
-  document.getElementById('mode-btn-editor').classList.toggle('on', mode==='editor');
-  document.getElementById('mode-btn-library').classList.toggle('on', mode==='library');
-  document.getElementById('editor-subtabs').style.display = mode==='editor' ? '' : 'none';
-  document.getElementById('library-subtabs').style.display = mode==='library' ? '' : 'none';
-  if (mode==='editor') switchTab('ed'); else switchTab('lib');
+function navSetCategory(cat) {
+  switchTab(TAB_MAP[cat][NAV.mode]);
 }
+function navSetMode(mode) {
+  switchTab(TAB_MAP[NAV.category][mode]);
+}
+// Backward-compatible alias (used by AI/library shortcuts elsewhere in the app)
+function switchMode(mode) { navSetMode(mode); }
 
 /* ════════════════════════════════════════════
    TOAST
